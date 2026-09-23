@@ -1,0 +1,46 @@
+{
+  "name": "no-taste-today",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "dev": "wrangler dev --ip 127.0.0.1 --port 8787",
+    "dev:ui": "vite --host 127.0.0.1",
+    "db:local": "wrangler d1 migrations apply taste-db --local",
+    "db:remote": "wrangler d1 migrations apply taste-db --remote",
+    "deploy": "npm run build && wrangler deploy",
+    "test": "tsx --test tests/*.test.ts tests/*.test.mjs",
+    "setup": "node scripts/setup.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "jose": "^6.2.12",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsonc-parser": "^3.3.1",
+    "prettier": "^3.9.9",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0",
+    "wrangler": "^4.0.0"
+  },
+  "license": "MIT",
+  "description": "A personal Spotify listening journal with structured AI taste commentary.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MuelNova/noTaste.git"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

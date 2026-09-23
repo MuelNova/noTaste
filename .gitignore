@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env*
+!.env.example
+test-results/
+*.log
+.dev.vars.*
+.wrangler.production.generated.json
+.secrets.production.generated.json
+.DS_Store
+
+!.dev.vars.example
