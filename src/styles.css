@@ -1224,3 +1224,90 @@ dialog input {
 button:disabled {
   cursor: not-allowed;
 }
+
+/* The downloaded cover and preview use the same PNG. */
+.share-dialog {
+  position: fixed;
+  margin: auto;
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  color: var(--ink);
+  background: #fff;
+  overflow: auto;
+}
+.share-dialog::backdrop {
+  background: rgba(25, 44, 59, 0.56);
+}
+.share-content {
+  padding: 22px;
+}
+.share-dialog .modal-heading {
+  margin-bottom: 16px;
+}
+.share-dialog .modal-heading h2 {
+  font-size: 20px;
+}
+.share-preview {
+  display: flex;
+  justify-content: center;
+  background: #e5edf2;
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 180px;
+  align-items: center;
+}
+.share-preview img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: min(52dvh, 500px);
+  box-shadow: 0 6px 20px #192c3b18;
+}
+.share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+.share-actions > a,
+.share-actions > button {
+  margin: 0;
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 12px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.share-link {
+  display: block;
+  margin-top: 16px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f2f6f9;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.share-message,
+.share-hint {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.share-message:empty {
+  display: none;
+}
+.view-switch > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

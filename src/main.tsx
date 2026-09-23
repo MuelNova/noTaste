@@ -14,11 +14,13 @@ import {
   BookOpen,
   AudioLines,
   Link2,
+  Share2,
 } from 'lucide-react';
 import { addDays, localDate, periodBounds } from '../shared/metrics';
 import { demoReport } from '../shared/demo';
 import type { PeriodType, Report, Track } from '../shared/schema';
 import './styles.css';
+import { ShareDialog } from './ShareDialog';
 type Generation = {
   verified_owner: boolean;
   next_allowed_at: string | null;
@@ -109,6 +111,7 @@ function App() {
   const [feedback, setFeedback] = useState<Record<string, string>>({}),
     [notice, setNotice] = useState(''),
     [metricView, setMetricView] = useState<'hours' | 'decades'>('hours');
+  const [shareReport, setShareReport] = useState<Report | null>(null);
   const [revision, setRevision] = useState(0);
   const [generation, setGeneration] = useState<Generation | null>(null);
   const [checkingModel, setCheckingModel] = useState(false);
@@ -379,6 +382,12 @@ function App() {
             </button>
           </div>
           <div className="view-switch">
+            {report && !loading && (
+              <button onClick={() => setShareReport(report)} aria-label="分享这一期">
+                <Share2 size={16} />
+                分享
+              </button>
+            )}
             {status?.local && (
               <button disabled={generating} onClick={() => setDemo(!demo)}>
                 {demo ? '查看真实手记' : '浏览示例刊'}
@@ -810,6 +819,13 @@ function App() {
         <div className="toast" role="status">
           {notice}
         </div>
+      )}
+      {shareReport && (
+        <ShareDialog
+          report={shareReport}
+          publicLink={!!status?.public_reports && !status.local && !shareReport.demo}
+          onClose={() => setShareReport(null)}
+        />
       )}
       {settings && (
         <div
