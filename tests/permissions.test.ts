@@ -10,6 +10,7 @@ import { notifySpotifyFailure, clearSpotifyAlert } from '../worker/notifications
 import { spotify } from '../worker/spotify';
 import worker from '../worker/index';
 import type { Env } from '../worker/env';
+import { checkModel } from '../worker/llm';
 
 function database() {
   const sqlite = new DatabaseSync(':memory:');
@@ -47,6 +48,29 @@ function database() {
 }
 const now = new Date('2026-09-23T08:00:00Z');
 const later = (ms: number) => new Date(now.getTime() + ms);
+
+test('model diagnostics retain gateway failures without HTML or credentials', async () => {
+  const original = globalThis.fetch;
+  const env = { KIMI_API_KEY: 'private-key', KIMI_BASE_URL: 'https://model.example.com' } as Env;
+  globalThis.fetch = (async () =>
+    new Response(
+      '<html><script>unsafe()</script><h1>Access denied</h1><p>error code: 1020 private-key</p></html>',
+      { status: 403 },
+    )) as typeof fetch;
+  try {
+    await assert.rejects(
+      () => checkModel(env),
+      (error: Error) => {
+        assert.match(error.message, /Access denied/);
+        assert.match(error.message, /1020/);
+        assert(!/private-key|unsafe|<html>/.test(error.message));
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 
 test('model diagnostics require a verified same-origin owner and redact provider errors', async () => {
   const { env, sqlite } = database();

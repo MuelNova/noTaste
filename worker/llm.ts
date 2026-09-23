@@ -11,11 +11,19 @@ import type { Env } from './env';
 
 async function modelFailure(response: Response, env: Env) {
   let detail = '';
+  const text = await response.text();
   try {
-    const body = (await response.json()) as { error?: { message?: unknown } };
+    const body = JSON.parse(text) as { error?: { message?: unknown } };
     if (typeof body.error?.message === 'string') detail = body.error.message;
   } catch {
-    // HTML block pages and unstructured responses are not safe diagnostic messages.
+    // Gateway/WAF failures may be text or HTML rather than a model API response.
+    // Keep plain text only; React renders this as text, never as markup.
+    detail = text
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
   for (const [name, value] of Object.entries(env)) {
     if (/KEY|TOKEN|SECRET|PASSWORD/.test(name) && typeof value === 'string' && value)
