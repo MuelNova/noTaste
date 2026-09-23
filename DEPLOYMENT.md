@@ -5,7 +5,7 @@
 ## 一次性账号配置
 
 1. 本机终端运行 `gh auth login --hostname github.com --git-protocol https --web`，用 MuelNova 登录。授权应包含推送工作流所需的 workflow scope；若推送时提示缺少权限，可运行 `gh auth refresh -h github.com -s workflow`。
-2. Cloudflare 个人资料 → API Tokens → Create Token：使用 Edit Cloudflare Workers 模板，补充 Account → D1 → Edit。仅选部署所在账号和 `nova.gal`。发布新 Worker、静态资源与自定义域名需要 Workers Scripts 编辑、Workers Routes 编辑和 Zone 读取权限；模板如显示账号读取，也保留。无需授予 Access 策略编辑权限。
+2. Cloudflare 个人资料 → API Tokens → Create Token：使用 Edit Cloudflare Workers 模板，补充 Account → D1 → Edit 和 Queues → Edit。仅选部署所在账号和 `nova.gal`。发布新 Worker、静态资源与自定义域名需要 Workers Scripts 编辑、Workers Routes 编辑和 Zone 读取权限；模板如显示账号读取，也保留。无需授予 Access 策略编辑权限。
 3. 把令牌填入被 Git 忽略的 `.dev.vars`：`CLOUDFLARE_API_TOKEN="..."`。不要提交文件或粘贴到聊天。
 4. 设置 `CLOUDFLARE_ACCOUNT_ID` 和 `APP_URL` 环境变量后运行 `node scripts/prepare-cloudflare.mjs`，创建或复用 D1 数据库 `taste-db` 和队列 `no-taste-reports`，并生成本地 `.env.production.local`（含独立生产密钥）。已有生产配置不会自动更换密钥。也可以手动准备文件，格式见下方。
 5. 运行 `node scripts/configure-github.mjs MuelNova/noTaste`，把配置上传为 GitHub Repository Variables / 加密 Secrets。命令只输出字段名，不输出值。可以加 `--dry-run` 检查待上传的字段名。

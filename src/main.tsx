@@ -125,11 +125,25 @@ function App() {
   useEffect(() => {
     if (!status || (!status.owner && !status.public_reports)) return;
     void refreshGeneration();
-    const timer = setInterval(() => {
-      void refreshGeneration();
-    }, 10000);
-    return () => clearInterval(timer);
+    const resume = () => {
+      if (!document.hidden) void refreshGeneration();
+    };
+    document.addEventListener('visibilitychange', resume);
+    return () => document.removeEventListener('visibilitychange', resume);
   }, [status, revision]);
+  useEffect(() => {
+    if (generation?.running) {
+      const timer = setInterval(() => {
+        if (!document.hidden) void refreshGeneration();
+      }, 10000);
+      return () => clearInterval(timer);
+    }
+    if (generation?.next_allowed_at) {
+      const remaining = Date.parse(generation.next_allowed_at) - Date.now();
+      const timer = setTimeout(() => void refreshGeneration(), Math.max(1000, remaining + 1000));
+      return () => clearTimeout(timer);
+    }
+  }, [generation?.running, generation?.next_allowed_at]);
   const [collection, setCollection] = useState<{
     plays: number;
     first: string | null;
@@ -217,6 +231,7 @@ function App() {
   useEffect(() => {
     if (!['queued', 'running'].includes(collection?.job?.status ?? '') || demo) return;
     const timer = setInterval(() => {
+      if (document.hidden) return;
       void api<NonNullable<typeof collection>>('/api/collection?type=' + type + '&date=' + date)
         .then((sample) => {
           setCollection(sample);
