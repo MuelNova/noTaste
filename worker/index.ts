@@ -2,8 +2,8 @@ import type { Env } from './env';
 import { appUrl, isLocal } from './env';
 import { cookie, cookies, decrypt, encrypt, equal, sameOrigin, verifiedSession } from './security';
 import { connect } from './spotify';
-import { daily, generate } from './pipeline';
-import { claimJob, generationState, allowedPeriod } from './jobs';
+import { daily, processReportTask } from './pipeline';
+import { enqueueReport, generationState, allowedPeriod, type ReportTask } from './jobs';
 import { accessConfigured, verifyAccessToken } from './access';
 import { periodBounds } from '../shared/metrics';
 import { demoReport } from '../shared/demo';
@@ -221,7 +221,7 @@ export default {
         )
           return json({ error: '请主人先完成 Spotify 与 Kimi 配置' }, 503);
         const id = body.type + ':' + start;
-        if (!(await claimJob(env, id, { manual: true, verified }))) {
+        if (!(await enqueueReport(env, id, { manual: true, verified }))) {
           const state = await generationState(env, verified);
           const response = json(
             {
@@ -236,18 +236,7 @@ export default {
             response.headers.set('Retry-After', String(state.cooldown_seconds));
           return response;
         }
-        await generate(env, body.type as any, start);
-        const job = await env.DB.prepare('SELECT status,stage,error FROM jobs WHERE id=?')
-          .bind(id)
-          .first<{ status: string; stage: string; error: string | null }>();
-        return json({
-          ...job,
-          error: owner
-            ? job?.error
-            : job?.status === 'failed'
-              ? '生成未完成，请主人查看管理端'
-              : null,
-        });
+        return json({ id, status: 'queued', stage: '等待后台生成' }, 202);
       }
       if (!owner) return json({ error: '只有站点主人可以执行此操作' }, 403);
       if (path === '/api/collection') {
@@ -264,7 +253,11 @@ export default {
         )
           .bind(type + ':' + start)
           .first<{ status: string; stage: string; error: string | null; updated_at: string }>();
-        if (job?.status === 'running' && Date.parse(job.updated_at) < Date.now() - 20 * 60000) {
+        if (
+          job &&
+          ['queued', 'running'].includes(job.status) &&
+          Date.parse(job.updated_at) < Date.now() - 20 * 60000
+        ) {
           job.status = 'failed';
           job.stage = '上次生成已中断，可稍后重试';
         }
@@ -296,7 +289,21 @@ export default {
       return json({ error: e instanceof Error ? e.message : '请求失败，请稍后重试' }, 500);
     }
   },
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(daily(env));
+  async queue(batch: MessageBatch<ReportTask>, env: Env) {
+    for (const message of batch.messages) {
+      const task = message.body;
+      if (
+        task &&
+        typeof task.id === 'string' &&
+        typeof task.runId === 'string' &&
+        /^(day|week|month):\d{4}-\d{2}-\d{2}$/.test(task.id)
+      ) {
+        await processReportTask(env, task);
+      }
+      message.ack();
+    }
+  },
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(daily(env, new Date(controller.scheduledTime)));
   },
 };

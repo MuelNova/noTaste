@@ -39,6 +39,11 @@ try {
   } else console.log('Using existing production D1 database: ' + name);
   if (saved.D1_DATABASE_ID && saved.D1_DATABASE_ID !== database.uuid)
     throw new Error('Database ID differs from saved production settings; refusing to replace it.');
+  const queues = await request('GET', '/queues?name=no-taste-reports');
+  if (!queues.some((queue) => queue.queue_name === 'no-taste-reports')) {
+    await request('POST', '/queues', { queue_name: 'no-taste-reports' });
+    console.log('Created report queue: no-taste-reports');
+  } else console.log('Using existing report queue: no-taste-reports');
   const values = {
     ...saved,
     CLOUDFLARE_ACCOUNT_ID: account,

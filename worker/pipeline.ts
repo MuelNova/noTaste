@@ -11,7 +11,7 @@ import type { Env } from './env';
 import { recent, findTrack } from './spotify';
 import { classify, writeEditorial } from './llm';
 import { songSource } from './sources';
-import { claimJob } from './jobs';
+import { claimJob, startQueuedJob, type ReportTask } from './jobs';
 export async function getPlays(env: Env, start: string, end: string) {
   const rows = await env.DB.prepare(
     'SELECT p.played_at, p.context, t.data FROM plays p JOIN tracks t ON t.id=p.track_id WHERE p.local_date>=? AND p.local_date<? ORDER BY p.played_at',
@@ -232,13 +232,28 @@ export async function generate(env: Env, type: PeriodType, date: string) {
       .run();
   }
 }
-export async function daily(env: Env) {
-  const today = localDate(new Date(), env.TIMEZONE || 'Australia/Perth'),
+export async function daily(env: Env, now = new Date()) {
+  const today = localDate(now, env.TIMEZONE || 'Australia/Perth'),
     yesterday = addDays(today, -1);
   for (const type of ['day', 'week', 'month'] as const) {
     if (type === 'week' && new Date(today + 'T12:00:00Z').getUTCDay() !== 1) continue;
     if (type === 'month' && !today.endsWith('-01')) continue;
     const { start } = periodBounds(type, yesterday);
-    if (await claimJob(env, type + ':' + start)) await generate(env, type, start);
+    const task = { id: type + ':' + start, runId: crypto.randomUUID() };
+    if (await claimJob(env, task.id, { runId: task.runId })) await processReportTask(env, task);
+  }
+}
+
+export async function processReportTask(env: Env, task: ReportTask, run = generate) {
+  if (!(await startQueuedJob(env, task))) return;
+  const [type, date] = task.id.split(':');
+  try {
+    await run(env, type as PeriodType, date);
+  } catch {
+    await env.DB.prepare(
+      "UPDATE jobs SET status='failed',stage='生成中断',error='后台生成失败，请稍后重试',updated_at=? WHERE id=? AND run_id=? AND status='running'",
+    )
+      .bind(new Date().toISOString(), task.id, task.runId)
+      .run();
   }
 }

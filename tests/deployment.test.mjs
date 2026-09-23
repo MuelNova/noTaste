@@ -23,6 +23,10 @@ test('production separates secrets from config, disables alternate hosts and bin
   assert.equal(config.preview_urls, false);
   assert.equal(config.d1_databases[0].database_id, settings.D1_DATABASE_ID);
   assert.equal(config.routes[0].pattern, 'taste.example.com');
+  assert.deepEqual(config.triggers.crons, ['30 17 * * *']);
+  assert.equal(config.queues.producers[0].binding, 'REPORT_QUEUE');
+  assert.equal(config.queues.consumers[0].max_retries, 0);
+  assert.equal(config.queues.consumers[0].max_concurrency, 1);
   assert.equal(config.vars.OWNER_EMAIL, 'owner@example.com');
   assert(!JSON.stringify(config).includes(settings.KIMI_API_KEY));
   assert.equal(secrets.KIMI_API_KEY, settings.KIMI_API_KEY);

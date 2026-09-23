@@ -215,12 +215,12 @@ function App() {
     }
   }, [status, demo]);
   useEffect(() => {
-    if (collection?.job?.status !== 'running' || demo) return;
+    if (!['queued', 'running'].includes(collection?.job?.status ?? '') || demo) return;
     const timer = setInterval(() => {
       void api<NonNullable<typeof collection>>('/api/collection?type=' + type + '&date=' + date)
         .then((sample) => {
           setCollection(sample);
-          if (sample.job?.status !== 'running') setRevision((v) => v + 1);
+          if (!['queued', 'running'].includes(sample.job?.status ?? '')) setRevision((v) => v + 1);
         })
         .catch(() => {});
     }, 3000);
@@ -234,25 +234,17 @@ function App() {
   async function generateReport() {
     setGenerating(true);
     setError('');
-    setStage('准备采集播放记录');
-    const id = type + ':' + periodBounds(type, date).start;
-    const timer = setInterval(() => {
-      void api<{ stage: string } | null>(
-        status?.owner ? '/api/jobs?id=' + encodeURIComponent(id) : '/api/generation',
-      )
-        .then((j) => j && setStage(j.stage))
-        .catch(() => {});
-    }, 2500);
+    setStage('提交任务');
     try {
       const job = await api<{ status: string; error?: string }>('/api/generate', { type, date });
       if (job.status === 'failed') throw new Error(job.error ?? '生成失败');
       setDemo(false);
       setRevision((v) => v + 1);
-      setNotice(job.status === 'partial' ? '播放记录已保存' : '这一期已生成');
+      setNotice('已提交，可关闭页面');
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      clearInterval(timer);
+      setStage('');
       setGenerating(false);
       void refreshGeneration();
     }
@@ -394,10 +386,12 @@ function App() {
             <span>示例刊</span>虚构听歌记录
           </div>
         )}
-        {(generating || generation?.running || collection?.job?.status === 'running') && (
+        {(generating ||
+          generation?.running ||
+          ['queued', 'running'].includes(collection?.job?.status ?? '')) && (
           <div className="progress-note" role="status">
             <AudioLines size={20} />
-            {stage || generation?.stage || collection?.job?.stage}· 请保持页面打开
+            {stage || generation?.stage || collection?.job?.stage}
           </div>
         )}
         {error && (

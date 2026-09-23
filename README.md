@@ -83,11 +83,11 @@ npm run dev
 
 推荐使用已配置好的 GitHub Actions 流程，一次性配置见 **[DEPLOYMENT.md](./DEPLOYMENT.md)**。下面是手动部署说明。
 
-项目默认采用 **Workers Static Assets + Worker + D1**：前端与接口同域，减少跨域认证配置。若必须单独用 Pages，静态产物是 `dist/`，需另外配置同域 `/api/*` 路由——不能直接把只有静态页面的 Pages 部署当作完整后台。
+项目默认采用 **Workers Static Assets + Worker + D1 + Queues**：前端与接口同域，减少跨域认证配置。若必须单独用 Pages，静态产物是 `dist/`，需另外配置同域 `/api/*` 路由——不能直接把只有静态页面的 Pages 部署当作完整后台。
 
 1. `npx wrangler login`，登录自己的 Cloudflare 账号
 2. `npx wrangler d1 create taste-db`，将返回的 `database_id` 填入 `wrangler.jsonc`
-3. `npm run db:remote`，创建远程数据表
+3. `npm run db:remote`，创建远程数据表；首次部署再运行 `npx wrangler queues create no-taste-reports` 创建报告队列
 4. 在 `wrangler.jsonc` 的 `vars` 中设置生产环境 `APP_URL`、`TIMEZONE`、`PUBLIC_REPORTS`、`KIMI_BASE_URL`、`KIMI_MODEL`；`.dev.vars` 中的本地配置不会自动成为生产配置
 5. 用 `npx wrangler secret put NAME` 配置上述 Spotify / Kimi 密钥、`TOKEN_ENCRYPTION_KEY`，以及需要的 Telegram 配置（`ADMIN_PASSWORD` 可选）。使用与本地隔离的生产加密密钥
 6. 按下方步骤配置 Cloudflare Access 邮箱登录，并将 `CF_ACCESS_TEAM_DOMAIN`、`CF_ACCESS_AUD`、`OWNER_EMAIL` 写入 `wrangler.jsonc` 的 `vars`
@@ -97,6 +97,8 @@ npm run dev
 > ⏰ **Cron 说明**：默认 `30 17 * * *`（UTC），对应珀斯次日 01:30。每日生成昨天的报告；当地周一生成上周，每月 1 日生成上月。改时区时须同步检查 Cron 时间。`wrangler dev` 不会自动触发 Cron。实际调用量小，但免费版 CPU/数据库操作限制仍需部署后观察。
 
 远程 D1 和本地 D1 独立，不会自动上传本地令牌。
+
+手动任务通过队列主动触发，没有每分钟检查任务的定时器。小于 64 KB 的任务消息正常处理约消耗 3 次队列操作（写入、读取、删除）；[Queues 免费额度](https://developers.cloudflare.com/queues/platform/pricing/)为每天 10,000 次操作。队列只传任务 ID，报告保存在 D1。
 
 ## 🔐 主人身份与生成额度
 
@@ -139,8 +141,8 @@ npm run dev
 | ✍️ 乐评     | 独立结构化生成，固定 schema，不把统计复述当乐评，不推断用户人格                                                                                                                            |
 | 📚 Fun Fact | 首版用 Wikipedia 搜索和摘要作为可回溯资料；只保留引用来源和原文片段校验通过的故事，没有资料就省略。片段校验可以防止捏造引用，不能替代人工事实审查；后续可加入更优先的艺人/制作人采访资料源 |
 | 🎵 推荐     | 模型给候选，Spotify 搜索后严格核对歌名和歌手；查不到就少展示，不生成虚构歌曲链接                                                                                                           |
-| 🩹 故障     | 播放数据先保存，模型失败时生成部分报告，管理端可重试。单周期任务有互斥及 20 分钟过期回收。每日任务失败保留错误需手动重试；首版无队列                                                       |
-| 🔌 生成方式 | 手动生成是保持连接的 HTTP 请求（避免误用请求结束后仅短时可运行的后台任务），页面提示保持打开；Cron 使用 scheduled handler                                                                  |
+| 🩹 故障     | 播放数据先保存，模型失败时生成部分报告，管理端可重试。单周期任务有互斥及 20 分钟过期回收。任务失败保留错误需手动重试；队列不自动重试，避免重复消耗模型额度                                 |
+| 🔌 生成方式 | 手动生成提交到 Cloudflare Queues 后立即返回，关闭页面不影响后台生成；队列按需唤醒 Worker，Cron 仍每天触发一次                                                                              |
 
 ## ✅ 验证
 

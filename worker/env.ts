@@ -1,5 +1,6 @@
 export type Env = {
   DB: D1Database;
+  REPORT_QUEUE: Queue<import('./jobs').ReportTask>;
   ASSETS: Fetcher;
   SPOTIFY_CLIENT_ID: string;
   SPOTIFY_CLIENT_SECRET: string;

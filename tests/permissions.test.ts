@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from 'jose';
-import { claimJob, generationState, allowedPeriod, COOLDOWN_MS } from '../worker/jobs';
+import {
+  claimJob,
+  enqueueReport,
+  generationState,
+  allowedPeriod,
+  COOLDOWN_MS,
+  type ReportTask,
+} from '../worker/jobs';
+import { processReportTask } from '../worker/pipeline';
 import { verifyAccessToken } from '../worker/access';
 import { verifiedSession, encrypt } from '../worker/security';
 import { notifySpotifyFailure, clearSpotifyAlert } from '../worker/notifications';
@@ -14,7 +22,7 @@ import { checkModel } from '../worker/llm';
 
 function database() {
   const sqlite = new DatabaseSync(':memory:');
-  for (const f of ['0001_initial.sql', '0002_notifications.sql'])
+  for (const f of ['0001_initial.sql', '0002_notifications.sql', '0003_background_jobs.sql'])
     sqlite.exec(readFileSync(new URL('../migrations/' + f, import.meta.url), 'utf8'));
   const DB = {
     prepare(sql: string) {
@@ -48,6 +56,95 @@ function database() {
 }
 const now = new Date('2026-09-23T08:00:00Z');
 const later = (ms: number) => new Date(now.getTime() + ms);
+
+test('manual HTTP request enqueues and returns before generation; disconnect does not own the task', async () => {
+  const { env, sqlite } = database();
+  sqlite
+    .prepare('INSERT INTO auth VALUES (?,?,?)')
+    .run('spotify', 'fake', new Date().toISOString());
+  const tasks: ReportTask[] = [];
+  env.REPORT_QUEUE = {
+    send: async (task: ReportTask) => {
+      tasks.push(task);
+    },
+  } as unknown as Queue<ReportTask>;
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new Error('HTTP submission must not call a provider');
+  }) as typeof fetch;
+  const controller = new AbortController();
+  try {
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: env.TIMEZONE }).format(new Date());
+    const response = await worker.fetch(
+      new Request(env.APP_URL + '/api/generate', {
+        method: 'POST',
+        headers: { Origin: env.APP_URL, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'day', date }),
+        signal: controller.signal,
+      }),
+      env,
+    );
+    assert.equal(response.status, 202);
+    assert.equal(((await response.json()) as any).status, 'queued');
+    assert.equal(tasks.length, 1);
+    assert.equal((await generationState(env, false)).running, true);
+    controller.abort();
+    let calls = 0;
+    const run = async () => {
+      calls++;
+      sqlite.prepare("UPDATE jobs SET status='complete' WHERE id=?").run(tasks[0].id);
+    };
+    await processReportTask(env, tasks[0], run);
+    await processReportTask(env, tasks[0], run);
+    assert.equal(calls, 1);
+    assert.equal((await generationState(env, false)).running, false);
+    assert((await generationState(env, false)).cooldown_seconds > 0);
+  } finally {
+    globalThis.fetch = original;
+    sqlite.close();
+  }
+});
+
+test('queue failure releases the active job without erasing the shared cooldown', async () => {
+  const { env, sqlite } = database();
+  env.REPORT_QUEUE = {
+    send: async () => {
+      throw new Error('queue unavailable');
+    },
+  } as unknown as Queue<ReportTask>;
+  try {
+    await assert.rejects(() => enqueueReport(env, 'day:2026-09-23', { manual: true }), /提交/);
+    const state = await generationState(env, false);
+    assert.equal(state.running, false);
+    assert(state.cooldown_seconds > 0);
+    assert.equal((sqlite.prepare('SELECT status FROM jobs').get() as any).status, 'failed');
+  } finally {
+    sqlite.close();
+  }
+});
+
+test('redelivered old messages cannot start a newer regeneration; provider failures are not retried', async () => {
+  const { env, sqlite } = database();
+  const id = 'day:2026-09-23';
+  try {
+    await claimJob(env, id, { runId: 'old', manual: true, verified: true });
+    sqlite.exec("UPDATE jobs SET status='complete'");
+    await claimJob(env, id, { runId: 'new', manual: true, verified: true });
+    let calls = 0;
+    const run = async () => {
+      calls++;
+      throw new Error('provider unavailable');
+    };
+    await processReportTask(env, { id, runId: 'old' }, run);
+    assert.equal(calls, 0);
+    await processReportTask(env, { id, runId: 'new' }, run);
+    await processReportTask(env, { id, runId: 'new' }, run);
+    assert.equal(calls, 1);
+    assert.equal((sqlite.prepare('SELECT status FROM jobs').get() as any).status, 'failed');
+  } finally {
+    sqlite.close();
+  }
+});
 
 test('model diagnostics retain gateway failures without HTML or credentials', async () => {
   const original = globalThis.fetch;

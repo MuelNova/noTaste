@@ -7,7 +7,7 @@
 1. 本机终端运行 `gh auth login --hostname github.com --git-protocol https --web`，用 MuelNova 登录。授权应包含推送工作流所需的 workflow scope；若推送时提示缺少权限，可运行 `gh auth refresh -h github.com -s workflow`。
 2. Cloudflare 个人资料 → API Tokens → Create Token：使用 Edit Cloudflare Workers 模板，补充 Account → D1 → Edit。仅选部署所在账号和 `nova.gal`。发布新 Worker、静态资源与自定义域名需要 Workers Scripts 编辑、Workers Routes 编辑和 Zone 读取权限；模板如显示账号读取，也保留。无需授予 Access 策略编辑权限。
 3. 把令牌填入被 Git 忽略的 `.dev.vars`：`CLOUDFLARE_API_TOKEN="..."`。不要提交文件或粘贴到聊天。
-4. 设置 `CLOUDFLARE_ACCOUNT_ID` 和 `APP_URL` 环境变量后运行 `node scripts/prepare-cloudflare.mjs`，创建或复用 D1 数据库 `taste-db`，并生成本地 `.env.production.local`（含独立生产密钥）。已有生产配置不会自动更换密钥。也可以手动准备文件，格式见下方。
+4. 设置 `CLOUDFLARE_ACCOUNT_ID` 和 `APP_URL` 环境变量后运行 `node scripts/prepare-cloudflare.mjs`，创建或复用 D1 数据库 `taste-db` 和队列 `no-taste-reports`，并生成本地 `.env.production.local`（含独立生产密钥）。已有生产配置不会自动更换密钥。也可以手动准备文件，格式见下方。
 5. 运行 `node scripts/configure-github.mjs MuelNova/noTaste`，把配置上传为 GitHub Repository Variables / 加密 Secrets。命令只输出字段名，不输出值。可以加 `--dry-run` 检查待上传的字段名。
 6. 推送 `main`，在 GitHub → Actions 查看 `Check and deploy`。也可以在 Actions 中手动 Run workflow。
 7. 在 Spotify 应用设置里添加 `https://taste.nova.gal/api/auth/spotify/callback`。网站首次上线后，先通过 Cloudflare Access 主人登录，再连接一次 Spotify。不会自动迁移本地授权或听歌记录。
@@ -33,7 +33,9 @@ TOKEN_ENCRYPTION_KEY="独立生成并长期保存的 32 字节 Base64 密钥"
 - 正式部署串行执行，部署中不被新提交取消，避免数据库迁移中断。
 - 应用密钥只进入 GitHub 加密 Secrets、临时部署密钥文件和 Cloudflare Secret binding；不进入浏览器构建、代码库或构建产物。临时文件在任务结束时清理。
 - 禁用 `workers.dev` 和预览域名，使用正式域名；不修改现有 Cloudflare Access 应用或策略。
-- 切换到生产后仍保留现有每日 Cron，珀斯凌晨 01:30 生成前一天日报。
+- 切换到生产后仍保留每日一次 Cron（UTC 17:30，UTC+8 次日 01:30），生成前一天日报。
+- 手动生成通过 Queues 主动唤醒 Worker，无任务时不轮询。首次部署前创建 `no-taste-reports`；已有项目升级可运行 `npx wrangler queues create no-taste-reports`，后续部署自动绑定生产者和消费者。
+- 队列每批一条、并发一，失败不自动重试；页面提交成功后可关闭。
 - 数据库迁移先于代码发布。迁移应向后兼容；失败时流程停止，不自动回滚数据库。
 
 ## GitHub 配置位置

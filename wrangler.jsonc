@@ -18,6 +18,18 @@
     },
   ],
   "triggers": { "crons": ["30 17 * * *"] },
+  "queues": {
+    "producers": [{ "binding": "REPORT_QUEUE", "queue": "no-taste-reports" }],
+    "consumers": [
+      {
+        "queue": "no-taste-reports",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 0,
+        "max_concurrency": 1,
+      },
+    ],
+  },
   "vars": {
     "TIMEZONE": "Australia/Perth",
     "PUBLIC_REPORTS": "false",
