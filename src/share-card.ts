@@ -1,5 +1,6 @@
 import type { Report } from '../shared/schema';
 import { addDays } from '../shared/metrics';
+import { drawShareQr } from './share-qr';
 
 export function reportLink(report: Pick<Report, 'type' | 'date'>, origin: string) {
   const url = new URL('/', origin);
@@ -174,8 +175,13 @@ export async function renderShareCard(report: Report, publicUrl: string | null):
     72,
     1260,
   );
-  ctx.textAlign = 'right';
-  ctx.fillText('音乐来自 Spotify', 1008, 1260);
+  if (publicUrl) {
+    ctx.fillText('音乐来自 Spotify', 72, 1300);
+    drawShareQr(ctx, publicUrl, 1008, 1162);
+  } else {
+    ctx.textAlign = 'right';
+    ctx.fillText('音乐来自 Spotify', 1008, 1260);
+  }
   return new Promise((resolve, reject) =>
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error('图片生成失败，请重试。'))),
