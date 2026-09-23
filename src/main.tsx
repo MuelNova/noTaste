@@ -111,6 +111,8 @@ function App() {
     [metricView, setMetricView] = useState<'hours' | 'decades'>('hours');
   const [revision, setRevision] = useState(0);
   const [generation, setGeneration] = useState<Generation | null>(null);
+  const [checkingModel, setCheckingModel] = useState(false);
+  const [modelCheck, setModelCheck] = useState('');
   const previousRunning = useRef(false);
   const refreshGeneration = () =>
     api<Generation>('/api/generation')
@@ -246,7 +248,7 @@ function App() {
       if (job.status === 'failed') throw new Error(job.error ?? '生成失败');
       setDemo(false);
       setRevision((v) => v + 1);
-      setNotice(job.status === 'partial' ? '已保存，可以查看或重试未完成部分' : '这一期已生成');
+      setNotice(job.status === 'partial' ? '播放记录已保存' : '这一期已生成');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -265,7 +267,7 @@ function App() {
       } else {
         await api('/api/feedback', { track_id: track.id, value });
         setFeedback((f) => ({ ...f, [track.id]: value }));
-        setNotice('已记下，后续推荐会参考这条反馈');
+        setNotice('已记下');
       }
     } catch (e) {
       setNotice((e as Error).message);
@@ -286,6 +288,8 @@ function App() {
   const currentTracks = report?.tracks ?? [];
   const findTrack = (id: string) => currentTracks.find((t) => t.id === id);
   const total = report?.metrics.plays ?? 0;
+  const hasComment = !!report?.taste_comment.paragraphs.length;
+  const missingComment = !!report && total > 0 && !hasComment;
   const today = localDate(new Date(), status?.timezone || 'Australia/Perth');
   const rightPeriod =
     date <= today && (status?.verified_owner || (type === 'day' && date === today));
@@ -385,45 +389,21 @@ function App() {
             )}
           </div>
         </div>
-        {!demo && (
-          <div className="generation-policy">
-            <span>
-              {status?.verified_owner
-                ? '主人已验证 · 不限间隔，可重生成历史报告'
-                : '普通模式 · 仅当天日报 · 所有访问者共用 3 小时间隔'}
-            </span>
-            {!status?.verified_owner && <button onClick={() => setSettings(true)}>主人登录</button>}
-          </div>
-        )}
         {demo && (
           <div className="sample-banner">
-            <span>示例刊</span>模拟听歌记录与示例乐评。歌曲链接打开 Spotify 搜索。
+            <span>示例刊</span>虚构听歌记录
           </div>
         )}
         {(generating || generation?.running || collection?.job?.status === 'running') && (
           <div className="progress-note" role="status">
             <AudioLines size={20} />
-            {stage || generation?.stage || collection?.job?.stage}
-            ，请保持页面打开。通常需要一两分钟。
+            {stage || generation?.stage || collection?.job?.stage}· 请保持页面打开
           </div>
         )}
         {error && (
           <div className="error" role="alert">
             {error}
             <button onClick={() => setRevision((v) => v + 1)}>重新加载</button>
-          </div>
-        )}
-        {!demo && collection && collection.plays > 0 && (
-          <div className="collection-note">
-            已收集 {collection.plays} 次播放
-            {collection.last &&
-              '，最近一条 ' +
-                new Intl.DateTimeFormat('zh-CN', {
-                  timeZone: status?.timezone,
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }).format(new Date(collection.last))}
-            。{collection.job?.status === 'running' ? '正在生成这一期的内容。' : ''}
           </div>
         )}
         {loading ? (
@@ -434,13 +414,7 @@ function App() {
         ) : !report ? (
           <div className="empty">
             <Headphones size={48} />
-            <p className="muted">No Taste Today</p>
-            <h1>{status?.connected ? '这一期，还没有落笔。' : '你的音乐，值得一篇好乐评。'}</h1>
-            <p>
-              {status?.connected
-                ? '选一个日期，生成乐评、风格画像和歌曲故事。周刊与月刊会汇总已经保存的播放记录。'
-                : '这里记录站点主人的听歌品味。访客无需连接 Spotify，报告生成后即可阅读。'}
-            </p>
+            <h1>这一期还未发布</h1>
             <div className="empty-actions">
               {status?.verified_owner && !status.connected ? (
                 <a className="primary-button" href="/api/auth/spotify/start">
@@ -484,24 +458,32 @@ function App() {
                   <span>Taste comment</span>
                   <span>关于这一期的选择</span>
                 </div>
-                <h1>{report.taste_comment.title}</h1>
-                <p className="standfirst">{report.taste_comment.standfirst}</p>
+                <h1>{missingComment ? '乐评未生成' : report.taste_comment.title}</h1>
+                <p className="standfirst">
+                  {missingComment ? '播放记录已保存。' : report.taste_comment.standfirst}
+                </p>
+                {missingComment && status?.owner && (
+                  <button className="text-button" onClick={() => setSettings(true)}>
+                    查看原因
+                  </button>
+                )}
                 <div className="review-copy">
                   {report.taste_comment.paragraphs.map((p, i) => (
                     <p key={i}>{p}</p>
                   ))}
                 </div>
-                <div className="review-foot">
-                  <span>AI 乐评 · 观点与音乐标签由模型生成</span>
-                  <span>{report.demo ? '示例文本' : report.model}</span>
-                </div>
+                {hasComment && (
+                  <div className="review-foot">
+                    <span>{report.demo ? '示例乐评' : 'AI 乐评'}</span>
+                  </div>
+                )}
               </article>
               <aside className="profile">
                 <div className="profile-top">
                   <AudioLines size={25} />
                   <span>这一期的声音</span>
                 </div>
-                <h2>{report.taste_profile.headline}</h2>
+                <h2>{missingComment ? '本期选曲' : report.taste_profile.headline}</h2>
                 <div className="tags">
                   {report.taste_profile.tags.map((t) => (
                     <span key={t}>{t}</span>
@@ -537,20 +519,11 @@ function App() {
                 </div>
               </aside>
             </section>
-            {!!report.warnings.length && (
-              <details className="data-note">
-                <summary>本期数据说明</summary>
-                {report.warnings.map((w, i) => (
-                  <p key={i}>{w}</p>
-                ))}
-              </details>
-            )}
             <section className="metrics-section">
               <div className="section-heading">
                 <h2>
                   Taste map <span>听觉侧写</span>
                 </h2>
-                <span className="muted">基于已收集记录</span>
               </div>
               <div className="metrics-grid">
                 <div className="genre-panel">
@@ -581,12 +554,6 @@ function App() {
                       </div>
                     ))}
                   </div>
-                  <details>
-                    <summary>这些标签怎么算？</summary>
-                    <p>
-                      每次播放按歌曲的一个主要风格计入，未知也保留在分母中。标签是音乐知识推测，未经音频分析。
-                    </p>
-                  </details>
                 </div>
                 <div className="time-panel">
                   <div className="panel-title">
@@ -638,7 +605,7 @@ function App() {
                         <span>18:00</span>
                         <span>23:00</span>
                       </div>
-                      <p className="chart-note">{report.timezone} · 播放次数，不代表实际听歌时长</p>
+                      <p className="chart-note">{report.timezone} · 播放次数</p>
                     </>
                   ) : (
                     <div className="decades">
@@ -651,7 +618,7 @@ function App() {
                           <strong>{d.count} 次</strong>
                         </div>
                       ))}
-                      <p className="chart-note">按所收录发行版本的年代；重制版不等于原曲年代。</p>
+                      <p className="chart-note">按发行版本计</p>
                     </div>
                   )}
                 </div>
@@ -725,20 +692,18 @@ function App() {
                 <p>{report.taste_evolution.body}</p>
                 {report.previous && (
                   <p className="chart-note">
-                    本期 {total} 条 / 上期 {report.previous.plays}{' '}
-                    条已收集记录；采集偏差可能影响比较。
+                    本期 {total} 条 / 上期 {report.previous.plays} 条记录
                   </p>
                 )}
               </section>
             )}
-            <section className="recommendations">
-              <div className="section-heading">
-                <h2>
-                  Next on your record shelf <span>接下来听什么</span>
-                </h2>
-                <span className="muted">从这份 taste 出发</span>
-              </div>
-              {report.recommendations.length ? (
+            {report.recommendations.length > 0 && (
+              <section className="recommendations">
+                <div className="section-heading">
+                  <h2>
+                    Next on your record shelf <span>接下来听什么</span>
+                  </h2>
+                </div>
                 <div className="recommendation-grid">
                   {report.recommendations.map((r) => (
                     <article key={r.track.id}>
@@ -782,12 +747,10 @@ function App() {
                     </article>
                   ))}
                 </div>
-              ) : (
-                <p className="muted empty-inline">这一期还没有核对成功的推荐歌曲。</p>
-              )}
-            </section>
+              </section>
+            )}
             <details className="track-list">
-              <summary>查看本期收集的歌曲（{report.metrics.tracks} 首）</summary>
+              <summary>本期歌单 · {report.metrics.tracks} 首</summary>
               {report.tracks.map((t) => (
                 <div className="track-row" key={t.id}>
                   <Cover track={t} />
@@ -800,6 +763,12 @@ function App() {
                   <TrackLink track={t} />
                 </div>
               ))}
+            </details>
+            <details className="data-note">
+              <summary>关于本期</summary>
+              <p>来自 Spotify 最近播放，可能不含本期全部记录。统计按播放次数计算。</p>
+              <p>风格标签由 AI 推测，未经音频分析；年代以所收录的发行版本为准。</p>
+              {hasComment && <p>乐评模型：{report.model}</p>}
             </details>
           </>
         )}
@@ -824,7 +793,6 @@ function App() {
       </main>
       <footer className="site-footer">
         <span>No Taste Today.</span>
-        <p>音乐来自 Spotify。记录可能不完整，品味始终在继续。</p>
         <a href="https://open.spotify.com" target="_blank" rel="noreferrer">
           Spotify <ArrowUpRight size={14} />
         </a>
@@ -860,12 +828,12 @@ function App() {
             </div>
             <div className="setting-row">
               <span>当前身份</span>
-              <strong>{status?.verified_owner ? '主人已验证' : '普通模式'}</strong>
+              <strong>{status?.verified_owner ? '管理员' : '访客'}</strong>
             </div>
-            <p className="muted">
-              访客无需连接 Spotify。普通生成仅限当天日报，所有访问者共用 3
-              小时间隔；主人验证后可不限间隔重生成日／周／月报告。
-            </p>
+            <details className="data-note">
+              <summary>生成规则</summary>
+              <p>访客仅可生成当天日报，共享 3 小时冷却。管理员可随时重生成历史日／周／月报告。</p>
+            </details>
             {status?.owner && (
               <>
                 <div className="setting-row">
@@ -882,6 +850,33 @@ function App() {
                   <span>Kimi</span>
                   <strong>{status.kimi_configured ? '已配置' : '等待 API Key'}</strong>
                 </div>
+                {status.verified_owner && (
+                  <>
+                    <button
+                      className="text-button"
+                      disabled={checkingModel}
+                      onClick={async () => {
+                        setCheckingModel(true);
+                        setModelCheck('');
+                        try {
+                          await api('/api/admin/model-check', {});
+                          setModelCheck('Kimi 连接正常');
+                        } catch (e) {
+                          setModelCheck((e as Error).message);
+                        } finally {
+                          setCheckingModel(false);
+                        }
+                      }}
+                    >
+                      {checkingModel ? '正在检测…' : '检测 Kimi 连接'}
+                    </button>
+                    {modelCheck && (
+                      <p className="muted" role="status">
+                        {modelCheck}
+                      </p>
+                    )}
+                  </>
+                )}
                 <div className="setting-row">
                   <span>Telegram 故障提醒</span>
                   <strong>{status.telegram_configured ? '已配置' : '待配置'}</strong>
@@ -890,6 +885,21 @@ function App() {
                   <span>报告可见范围</span>
                   <strong>{status.public_reports ? '公开阅读' : '仅主人'}</strong>
                 </div>
+                {collection && (
+                  <div className="setting-row">
+                    <span>本期播放记录</span>
+                    <strong>{collection.plays} 次</strong>
+                  </div>
+                )}
+                {(!!report?.warnings.length || collection?.job?.error) && (
+                  <details className="data-note" open={missingComment}>
+                    <summary>生成详情</summary>
+                    {report?.warnings.map((warning, i) => (
+                      <p key={i}>{warning}</p>
+                    ))}
+                    {collection?.job?.error && <p>{collection.job.error}</p>}
+                  </details>
+                )}
               </>
             )}
             {status?.verified_owner ? (

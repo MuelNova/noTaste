@@ -8,6 +8,45 @@ import {
   type Source,
 } from '../shared/schema';
 import type { Env } from './env';
+
+async function modelFailure(response: Response, env: Env) {
+  let detail = '';
+  try {
+    const body = (await response.json()) as { error?: { message?: unknown } };
+    if (typeof body.error?.message === 'string') detail = body.error.message;
+  } catch {
+    // HTML block pages and unstructured responses are not safe diagnostic messages.
+  }
+  for (const [name, value] of Object.entries(env)) {
+    if (/KEY|TOKEN|SECRET|PASSWORD/.test(name) && typeof value === 'string' && value)
+      detail = detail.replaceAll(value, '[redacted]');
+  }
+  detail = detail.replace(/Bearer\s+\S+|sk-[\w-]+/gi, '[redacted]').replace(/[\r\n]+/g, ' ');
+  return new Error(
+    `Kimi 请求失败 (${response.status})` +
+      (detail ? `：${detail.slice(0, 500)}` : '，请检查接口权限、额度或网络限制'),
+  );
+}
+
+export async function checkModel(env: Env) {
+  if (!env.KIMI_API_KEY) throw new Error('请配置 Kimi API Key');
+  const url = new URL(env.KIMI_BASE_URL || 'https://api.moonshot.cn/v1');
+  if (url.protocol !== 'https:') throw new Error('Kimi 接口必须使用 HTTPS');
+  const response = await fetch(url.href.replace(/\/$/, '') + '/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + env.KIMI_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: env.KIMI_MODEL || 'kimi-k2.6',
+      messages: [{ role: 'user', content: 'Reply OK.' }],
+      max_tokens: 4,
+    }),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!response.ok) throw await modelFailure(response, env);
+  // This probes access only. Four tokens may be consumed by the model's reasoning.
+  await response.body?.cancel();
+  return { ok: true };
+}
 export async function jsonCompletion<T>(
   env: Env,
   system: string,
@@ -42,8 +81,7 @@ export async function jsonCompletion<T>(
       }),
       signal: AbortSignal.timeout(110000),
     });
-    if (!response.ok)
-      throw new Error(`Kimi 请求失败 (${response.status})，请检查模型名称、余额或访问权限`);
+    if (!response.ok) throw await modelFailure(response, env);
     const data = (await response.json()) as {
       choices?: { message: { content: string }; finish_reason: string }[];
     };

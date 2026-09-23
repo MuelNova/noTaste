@@ -896,9 +896,6 @@ summary {
   padding: 12px;
   text-decoration: underline;
 }
-.empty-inline {
-  padding: 20px 0;
-}
 .toast {
   position: fixed;
   bottom: 28px;
@@ -1214,12 +1211,6 @@ dialog input {
   }
 }
 
-.collection-note {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.8;
-  margin: 0 0 16px;
-}
 .date-nav .today-button {
   font-size: 12px;
   color: var(--blue);
@@ -1230,23 +1221,6 @@ dialog input {
   white-space: nowrap;
 }
 
-.generation-policy {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 12px;
-  margin: -8px 0 20px;
-  flex-wrap: wrap;
-}
-.generation-policy button {
-  border: 0;
-  background: none;
-  color: var(--blue);
-  text-decoration: underline;
-  padding: 4px 0;
-}
 button:disabled {
   cursor: not-allowed;
 }

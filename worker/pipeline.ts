@@ -129,7 +129,7 @@ export async function generate(env: Env, type: PeriodType, date: string) {
       const sources = (
         await Promise.all(metrics.top_tracks.slice(0, 2).map((t) => songSource(env, t.track)))
       ).filter((x) => x !== null);
-      await stage(env, id, '撰写乐评与各个 section');
+      await stage(env, id, '撰写乐评');
       try {
         const last = await env.DB.prepare('SELECT data FROM reports WHERE type=? AND date=?')
           .bind(type, prev.start)

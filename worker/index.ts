@@ -7,6 +7,7 @@ import { claimJob, generationState, allowedPeriod } from './jobs';
 import { accessConfigured, verifyAccessToken } from './access';
 import { periodBounds } from '../shared/metrics';
 import { demoReport } from '../shared/demo';
+import { checkModel } from './llm';
 const json = (value: unknown, status = 200) =>
   Response.json(value, {
     status,
@@ -55,6 +56,10 @@ export default {
           timezone: env.TIMEZONE || 'Australia/Perth',
           local: isLocal(request, env),
         });
+      }
+      if (path === '/api/admin/model-check' && request.method === 'POST') {
+        if (!verified) return json({ error: '请先登录管理员账号' }, 401);
+        return json(await checkModel(env));
       }
       if (path === '/api/admin/login' && request.method === 'GET') {
         if (!accessConfigured(env))

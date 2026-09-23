@@ -48,6 +48,48 @@ function database() {
 const now = new Date('2026-09-23T08:00:00Z');
 const later = (ms: number) => new Date(now.getTime() + ms);
 
+test('model diagnostics require a verified same-origin owner and redact provider errors', async () => {
+  const { env, sqlite } = database();
+  env.ADMIN_PASSWORD = 'a-long-test-password';
+  env.KIMI_API_KEY = 'test-private-model-key';
+  env.KIMI_BASE_URL = 'https://model.example.com/v1';
+  env.KIMI_MODEL = 'test-model';
+  const session = await encrypt(
+    { role: 'owner', method: 'password', expires: Date.now() + 60000 },
+    env,
+  );
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async (_url, options) => {
+    calls++;
+    const body = JSON.parse(options!.body as string);
+    assert.equal(body.max_tokens, 4);
+    return Response.json(
+      { error: { message: 'IP blocked; credential ' + env.KIMI_API_KEY } },
+      { status: 403 },
+    );
+  }) as typeof fetch;
+  const request = (origin: string, authenticated = false) =>
+    new Request(env.APP_URL + '/api/admin/model-check', {
+      method: 'POST',
+      headers: { Origin: origin, ...(authenticated ? { Cookie: 'taste_session=' + session } : {}) },
+    });
+  try {
+    assert.equal((await worker.fetch(request(env.APP_URL), env)).status, 401);
+    assert.equal((await worker.fetch(request('https://elsewhere.example', true), env)).status, 403);
+    assert.equal(calls, 0);
+    const response = await worker.fetch(request(env.APP_URL, true), env);
+    const result = await response.text();
+    assert.equal(calls, 1);
+    assert.match(result, /403/);
+    assert.match(result, /IP blocked/);
+    assert(!result.includes(env.KIMI_API_KEY));
+  } finally {
+    globalThis.fetch = original;
+    sqlite.close();
+  }
+});
+
 test('shared cooldown is atomic, covers failures and survives midnight', async () => {
   const { env, sqlite } = database();
   const results = await Promise.all(
