@@ -1,4 +1,5 @@
 import { calculateMetrics, periodBounds, addDays } from './metrics';
+import { emptyBSide } from './sides';
 import type { Classification, PeriodType, Play, Report, Track } from './schema';
 const records = [
   ['Idioteque', 'Radiohead', 'Kid A', '2000', '电子', 'IDM'],
@@ -172,6 +173,36 @@ export function demoReport(type: PeriodType = 'day', date = '2026-09-22'): Repor
         }
       : null,
     model: 'demo',
-    prompt_version: '2',
+    prompt_version: '3',
+    skip_rule: 'gap-10s-v1',
+    collected_plays: metrics.plays + 3 * days,
+    b_side: {
+      ...emptyBSide('Australia/Perth'),
+      metrics: calculateMetrics(
+        plays
+          .filter((_, i) => i % 32 < 3)
+          .map((p, i) => ({ ...p, track: demoTracks[[4, 7, 0][i % 3]] })),
+        labels,
+        'Australia/Perth',
+      ),
+      tracks: [demoTracks[4], demoTracks[7], demoTracks[0]],
+      taste_comment: {
+        title: '有些熟悉的声音，今天先略过。',
+        standfirst: '同一首《Idioteque》，既出现在留下的选曲里，也在这一面被略过。',
+        paragraphs: [
+          '《Jóga》《When the Sun Hits》与《Idioteque》落在这一面，把熟悉的电子与吉他音乐又排列了一次。它们与 A 面的距离并不遥远；这份示例里的取舍，发生在具体的播放之间。',
+          '《Idioteque》同时出现在两面，正是这张唱片最值得保留的矛盾。重复出现与偶尔略过可以并存，一次切歌并不会抹掉另一面的选择。',
+        ],
+        track_ids: ['demo-4', 'demo-7', 'demo-0'],
+      },
+      taste_profile: { headline: '熟悉，也可以留待下次', tags: ['Art pop', 'Shoegaze', 'IDM'] },
+      discoveries: [
+        {
+          title: '一首歌，两种去向',
+          body: '《Idioteque》在这一期示例中既被收录，也留下了跳过记录。两面的交集比单纯的喜欢与不喜欢更有意思。',
+          track_ids: ['demo-0'],
+        },
+      ],
+    },
   };
 }

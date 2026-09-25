@@ -11,7 +11,7 @@ import {
   COOLDOWN_MS,
   type ReportTask,
 } from '../worker/jobs';
-import { processReportTask } from '../worker/pipeline';
+import { generate, processReportTask } from '../worker/pipeline';
 import { verifyAccessToken } from '../worker/access';
 import { verifiedSession, encrypt } from '../worker/security';
 import { notifySpotifyFailure, clearSpotifyAlert } from '../worker/notifications';
@@ -427,5 +427,80 @@ test('failed Spotify refresh triggers alert while preserving refresh token for r
   } finally {
     globalThis.fetch = original;
     sqlite.close();
+  }
+});
+
+test('generation persists both sides in one editorial call and discards invented empty B', async () => {
+  const { demoReport, demoTracks } = await import('../shared/demo');
+  const original = globalThis.fetch;
+  try {
+    for (const hasSkip of [true, false]) {
+      const { env, sqlite } = database();
+      try {
+        for (const track of demoTracks.slice(0, 2)) {
+          sqlite.prepare('INSERT INTO tracks(id,data,classification) VALUES(?,?,?)').run(
+            track.id,
+            JSON.stringify(track),
+            JSON.stringify({
+              track_id: track.id,
+              genre: '未知',
+              subgenres: [],
+              moods: [],
+              language: '未知',
+              confidence: 0,
+            }),
+          );
+        }
+        for (const [i, at] of [
+          '2026-09-21T02:00:00Z',
+          hasSkip ? '2026-09-21T02:00:10Z' : '2026-09-21T02:03:00Z',
+        ].entries()) {
+          sqlite
+            .prepare('INSERT INTO plays VALUES(?,?,?,?)')
+            .run(demoTracks[i].id, at, '2026-09-21', null);
+        }
+        const demo = demoReport('week');
+        const output = {
+          ...demo,
+          recommendations: [],
+          fun_facts: [],
+          b_side: {
+            ...demo.b_side,
+            taste_comment: {
+              ...demo.b_side!.taste_comment,
+              track_ids: [demoTracks[0].id, demoTracks[1].id, 'invented'],
+            },
+          },
+        };
+        let calls = 0;
+        globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+          if (String(url).endsWith('/chat/completions')) {
+            calls++;
+            const input = JSON.parse(JSON.parse(String(init?.body)).messages[1].content);
+            assert.equal(input.metrics.plays, hasSkip ? 1 : 2);
+            assert.equal(input.skipped.metrics.plays, hasSkip ? 1 : 0);
+            return Response.json({
+              choices: [{ message: { content: JSON.stringify(output) }, finish_reason: 'stop' }],
+            });
+          }
+          return new Response('', { status: 404 });
+        }) as typeof fetch;
+        await generate(env, 'week', '2026-09-21');
+        const row = sqlite.prepare('SELECT data FROM reports').get() as { data: string };
+        assert(row, 'report saved');
+        const result = JSON.parse(row.data);
+        assert.equal(calls, 1);
+        assert.equal(result.status, 'complete');
+        assert.equal(result.collected_plays, 2);
+        assert.equal(result.metrics.plays, hasSkip ? 1 : 2);
+        assert.equal(result.b_side.metrics.plays, hasSkip ? 1 : 0);
+        assert.deepEqual(result.b_side.taste_comment.track_ids, hasSkip ? [demoTracks[0].id] : []);
+        if (!hasSkip) assert.deepEqual(result.b_side.taste_comment.paragraphs, []);
+      } finally {
+        sqlite.close();
+      }
+    }
+  } finally {
+    globalThis.fetch = original;
   }
 });

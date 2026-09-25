@@ -1311,3 +1311,227 @@ button:disabled {
   align-items: center;
   gap: 6px;
 }
+
+.journal-shell {
+  min-height: 100vh;
+  background: #f2f6f9;
+  transition:
+    background-color 280ms,
+    color 280ms;
+}
+.record-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  margin: 8px 0 28px;
+}
+.record-switch button {
+  border: 0;
+  background: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: left;
+  padding: 14px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+.record-switch button b {
+  font-size: 18px;
+}
+.record-switch button span {
+  font-size: 13px;
+}
+.record-switch button[aria-pressed='true'] {
+  color: var(--ink);
+  border-color: currentColor;
+}
+.record-disc {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  position: relative;
+  display: grid;
+  place-items: center;
+  color: #e5edf3;
+  background:
+    repeating-radial-gradient(circle, transparent 0 4px, #ffffff12 5px 6px),
+    conic-gradient(from 35deg, #243f53, #779aac, #253e51, #aa9abd, #243f53);
+  box-shadow: 0 4px 16px #142f4920;
+}
+.record-disc i {
+  position: absolute;
+  inset: 27px;
+  border: 1px solid #e5edf370;
+  border-radius: 50%;
+  background: #213747;
+}
+.record-disc em {
+  font-size: 10px;
+  font-style: normal;
+  z-index: 1;
+}
+.record-body {
+  position: relative;
+  transform-origin: 50% 150px;
+}
+.record-body.is-empty-side .profile,
+.record-body.is-empty-side .metrics-section {
+  display: none;
+}
+.record-body.is-empty-side .opening {
+  grid-template-columns: 1fr;
+}
+.record-body.is-flipping {
+  animation: record-page-turn 560ms ease-in-out both;
+  pointer-events: none;
+}
+.record-disc.is-turning {
+  animation: disc-turn 560ms ease-in-out both;
+}
+.record-body.is-flipping::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: min(460px, 60vh);
+  pointer-events: none;
+  border-radius: 12px;
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    #badceb60 46%,
+    #efe8ff90 50%,
+    transparent 64%
+  );
+  animation: record-glint 560ms ease-out both;
+}
+@keyframes record-page-turn {
+  0%,
+  100% {
+    transform: perspective(1400px) rotateY(0);
+    opacity: 1;
+  }
+  49% {
+    transform: perspective(1400px) rotateY(16deg) scale(0.99);
+    opacity: 0;
+  }
+  50% {
+    transform: perspective(1400px) rotateY(-16deg) scale(0.99);
+    opacity: 0;
+  }
+}
+@keyframes disc-turn {
+  0% {
+    transform: perspective(250px) rotateY(0) rotateZ(0);
+  }
+  50% {
+    transform: perspective(250px) rotateY(90deg) rotateZ(25deg) scale(1.12);
+  }
+  50.01% {
+    transform: perspective(250px) rotateY(-90deg) rotateZ(-25deg) scale(1.12);
+  }
+  100% {
+    transform: perspective(250px) rotateY(0) rotateZ(0);
+  }
+}
+@keyframes record-glint {
+  0% {
+    opacity: 0;
+    background-position: -300px 0;
+  }
+  30% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    background-position: 500px 0;
+  }
+}
+.side-b {
+  background: #172735;
+  color: #e9f0f5;
+}
+.side-b main,
+.side-b .site-header,
+.side-b .site-footer {
+  --ink: #e9f0f5;
+  --muted: #a8bac9;
+  --blue: #c4b1d4;
+  --line: #3c5060;
+  --series-0: #a3bddd;
+  --series-1: #c4b1d4;
+  --series-2: #df96ae;
+  --series-3: #86bfc0;
+  --series-4: #899da9;
+}
+.side-b .opening,
+.side-b .evolution,
+.side-b .archive button {
+  background: #203544;
+}
+.side-b .profile {
+  background: #334153;
+}
+.side-b .standfirst,
+.side-b .discovery-grid p {
+  color: #bfccd7;
+}
+.side-b .linked-tracks a,
+.side-b .period-switch,
+.side-b .mini-switch button[aria-pressed='true'],
+.side-b .pill {
+  background: #304656;
+  color: #e1d5ed;
+}
+.side-b .period-switch button[aria-pressed='true'] {
+  background: #c4b1d4;
+  color: #172735;
+}
+.side-b .date-nav input {
+  color-scheme: dark;
+}
+.side-b .date-nav .today-button,
+.side-b .icon-button:hover {
+  background: #334858;
+  color: #e9f0f5;
+}
+.side-b .hour-tooltip {
+  background: #c4b1d4;
+  color: #172735;
+}
+.side-b .record-disc {
+  box-shadow: 0 0 24px #bba7d01f;
+}
+.side-b .progress-note {
+  background: #304656;
+  color: #e9f0f5;
+}
+.side-b .toast {
+  background: #e9f0f5;
+  color: #172735;
+}
+@media (max-width: 520px) {
+  .record-switch {
+    gap: 12px;
+  }
+  .record-disc {
+    width: 62px;
+    height: 62px;
+  }
+  .record-disc i {
+    inset: 22px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .journal-shell {
+    transition: none;
+  }
+  .record-body.is-flipping,
+  .record-disc.is-turning,
+  .record-body.is-flipping::after {
+    animation: none;
+  }
+}

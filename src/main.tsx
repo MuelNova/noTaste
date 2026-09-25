@@ -21,6 +21,7 @@ import { demoReport } from '../shared/demo';
 import type { PeriodType, Report, Track } from '../shared/schema';
 import './styles.css';
 import { ShareDialog } from './ShareDialog';
+import { sideReport } from '../shared/sides';
 type Generation = {
   verified_owner: boolean;
   next_allowed_at: string | null;
@@ -99,7 +100,7 @@ function App() {
   );
   const [date, setDate] = useState(initial.get('date') ?? localDate(new Date(), 'Australia/Perth'));
   const [status, setStatus] = useState<Status | null>(null),
-    [report, setReport] = useState<Report | null>(null),
+    [storedReport, setReport] = useState<Report | null>(null),
     [demo, setDemo] = useState(initial.get('demo') === '1');
   const [loading, setLoading] = useState(true),
     [error, setError] = useState(''),
@@ -111,6 +112,30 @@ function App() {
   const [feedback, setFeedback] = useState<Record<string, string>>({}),
     [notice, setNotice] = useState(''),
     [metricView, setMetricView] = useState<'hours' | 'decades'>('hours');
+  const [side, setSide] = useState<'a' | 'b'>('a');
+  const [flipping, setFlipping] = useState(false);
+  const flipTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const report = storedReport ? sideReport(storedReport, side) : null;
+  useEffect(() => {
+    setSide('a');
+    setFlipping(false);
+    return () => {
+      flipTimers.current.forEach(clearTimeout);
+      flipTimers.current = [];
+    };
+  }, [type, date, demo]);
+  function flip(next: 'a' | 'b') {
+    if (next === side || flipping) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setSide(next);
+      return;
+    }
+    setFlipping(true);
+    flipTimers.current = [
+      setTimeout(() => setSide(next), 280),
+      setTimeout(() => setFlipping(false), 560),
+    ];
+  }
   const [shareReport, setShareReport] = useState<Report | null>(null);
   const [revision, setRevision] = useState(0);
   const [generation, setGeneration] = useState<Generation | null>(null);
@@ -295,7 +320,7 @@ function App() {
       );
     }
   };
-  const currentTracks = report?.tracks ?? [];
+  const currentTracks = [...(storedReport?.tracks ?? []), ...(storedReport?.b_side?.tracks ?? [])];
   const findTrack = (id: string) => currentTracks.find((t) => t.id === id);
   const total = report?.metrics.plays ?? 0;
   const hasComment = !!report?.taste_comment.paragraphs.length;
@@ -330,7 +355,7 @@ function App() {
             ? '重新生成'
             : '生成这一期';
   return (
-    <>
+    <div className={'journal-shell side-' + side}>
       <header className="site-header">
         <a className="brand" href="/" aria-label="No Taste Today 首页">
           <Disc3 size={28} />
@@ -383,7 +408,7 @@ function App() {
           </div>
           <div className="view-switch">
             {report && !loading && (
-              <button onClick={() => setShareReport(report)} aria-label="分享这一期">
+              <button onClick={() => setShareReport(storedReport)} aria-label="分享这一期">
                 <Share2 size={16} />
                 分享
               </button>
@@ -467,327 +492,387 @@ function App() {
                 {type !== 'day' && '— ' + addDays(report.end_date, -1).replaceAll('-', '.')}
               </span>
               <span>
-                收集到 {total} 次播放 · {report.metrics.observed_days} 天有记录
+                {side === 'b' && !storedReport?.b_side ? (
+                  'B 面尚未生成'
+                ) : (
+                  <>
+                    {side === 'b' ? '记录到' : '收录'} {total} 次{side === 'b' ? '跳过' : '播放'} ·{' '}
+                    {report.metrics.observed_days} 天有记录
+                  </>
+                )}
               </span>
             </div>
-            <section className="opening">
-              <article className="review">
-                <div className="section-caption">
-                  <span>Taste comment</span>
-                  <span>关于这一期的选择</span>
-                </div>
-                <h1>{missingComment ? '乐评未生成' : report.taste_comment.title}</h1>
-                <p className="standfirst">
-                  {missingComment ? '播放记录已保存。' : report.taste_comment.standfirst}
-                </p>
-                {missingComment && status?.owner && (
-                  <button className="text-button" onClick={() => setSettings(true)}>
-                    查看原因
-                  </button>
-                )}
-                <div className="review-copy">
-                  {report.taste_comment.paragraphs.map((p, i) => (
-                    <p key={i}>{p}</p>
-                  ))}
-                </div>
-                {hasComment && (
-                  <div className="review-foot">
-                    <span>{report.demo ? '示例乐评' : 'AI 乐评'}</span>
-                  </div>
-                )}
-              </article>
-              <aside className="profile">
-                <div className="profile-top">
-                  <AudioLines size={25} />
-                  <span>这一期的声音</span>
-                </div>
-                <h2>{missingComment ? '本期选曲' : report.taste_profile.headline}</h2>
-                <div className="tags">
-                  {report.taste_profile.tags.map((t) => (
-                    <span key={t}>{t}</span>
-                  ))}
-                </div>
-                <div className="profile-numbers">
-                  <div>
-                    <strong>{report.metrics.tracks}</strong>
-                    <span>首不同歌曲</span>
-                  </div>
-                  <div>
-                    <strong>{report.metrics.artists}</strong>
-                    <span>位歌手</span>
-                  </div>
-                  <div>
-                    <strong>{percent(report.metrics.repeat_ratio)}</strong>
-                    <span>本期重听</span>
-                  </div>
-                </div>
-                <div className="small-label">反复出现的作品</div>
-                <div className="top-tracks">
-                  {report.metrics.top_tracks.slice(0, 4).map(({ track, count }) => (
-                    <div className="track-row" key={track.id}>
-                      <Cover track={track} />
-                      <div className="track-info">
-                        <strong>{track.name}</strong>
-                        <span>{track.artists.map((a) => a.name).join(', ')}</span>
-                      </div>
-                      <span className="play-count">{count} 次</span>
-                      <TrackLink track={track} />
-                    </div>
-                  ))}
-                </div>
-              </aside>
-            </section>
-            <section className="metrics-section">
-              <div className="section-heading">
-                <h2>
-                  Taste map <span>听觉侧写</span>
-                </h2>
+            <div className="record-switch" role="group" aria-label="唱片双面">
+              <button aria-pressed={side === 'a'} disabled={flipping} onClick={() => flip('a')}>
+                <b>A 面</b>
+                <span>Taste today.</span>
+              </button>
+              <div className={'record-disc ' + (flipping ? 'is-turning' : '')} aria-hidden="true">
+                <i />
+                <em>{side.toUpperCase()}</em>
               </div>
-              <div className="metrics-grid">
-                <div className="genre-panel">
-                  <h3>
-                    风格的组成 <span className="pill">AI 分类</span>
-                  </h3>
-                  <div className="genre-strip" aria-label="风格占比">
-                    {report.metrics.genres.map((g, i) => (
-                      <span
-                        key={g.name}
-                        style={{
-                          width: (total ? (g.count / total) * 100 : 0) + '%',
-                          background: `var(--series-${i % 5})`,
-                        }}
-                        title={`${g.name} ${g.count} 次`}
-                      />
+              <button aria-pressed={side === 'b'} disabled={flipping} onClick={() => flip('b')}>
+                <b>B 面</b>
+                <span>Not today.</span>
+              </button>
+            </div>
+            <div
+              className={
+                'record-body ' +
+                (flipping ? 'is-flipping ' : '') +
+                (side === 'b' && !total ? 'is-empty-side' : '')
+              }
+            >
+              <section className="opening">
+                <article className="review">
+                  <div className="section-caption">
+                    <span>{side === 'b' ? 'Not today.' : 'Taste comment'}</span>
+                    <span>{side === 'b' ? '这一期，擦肩而过' : '关于这一期的选择'}</span>
+                  </div>
+                  <h1>
+                    {missingComment
+                      ? side === 'b'
+                        ? 'B 面短评未生成'
+                        : '乐评未生成'
+                      : report.taste_comment.title}
+                  </h1>
+                  <p className="standfirst">
+                    {missingComment
+                      ? side === 'b'
+                        ? '跳过记录已保存。'
+                        : '播放记录已保存。'
+                      : report.taste_comment.standfirst}
+                  </p>
+                  {missingComment && status?.owner && (
+                    <button className="text-button" onClick={() => setSettings(true)}>
+                      查看原因
+                    </button>
+                  )}
+                  <div className="review-copy">
+                    {report.taste_comment.paragraphs.map((p, i) => (
+                      <p key={i}>{p}</p>
                     ))}
                   </div>
-                  <div className="genre-legend">
-                    {report.metrics.genres.map((g, i) => (
-                      <div key={g.name}>
-                        <span
-                          className="legend-dot"
-                          style={{ background: `var(--series-${i % 5})` }}
-                        />
-                        <span>{g.name}</span>
-                        <strong>{percent(total ? g.count / total : null)}</strong>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="time-panel">
-                  <div className="panel-title">
-                    <h3>{metricView === 'hours' ? '音乐出现的时刻' : '唱片的年代'}</h3>
-                    <div className="mini-switch">
-                      <button
-                        aria-pressed={metricView === 'hours'}
-                        onClick={() => setMetricView('hours')}
-                      >
-                        时段
-                      </button>
-                      <button
-                        aria-pressed={metricView === 'decades'}
-                        onClick={() => setMetricView('decades')}
-                      >
-                        年代
-                      </button>
-                    </div>
-                  </div>
-                  {metricView === 'hours' ? (
-                    <>
-                      <div
-                        className="hour-chart"
-                        role="img"
-                        aria-label={
-                          '每小时播放记录：' +
-                          report.metrics.hours.map((n, i) => `${i}点${n}次`).join('，')
-                        }
-                      >
-                        {report.metrics.hours.map((n, i) => (
-                          <div className="hour-column" key={i}>
-                            <span className="hour-tooltip">
-                              {String(i).padStart(2, '0')}:00 · {n} 次
-                            </span>
-                            <div
-                              style={{
-                                height:
-                                  Math.max(2, (n / Math.max(1, ...report.metrics.hours)) * 120) +
-                                  'px',
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                      <div className="hour-axis">
-                        <span>00:00</span>
-                        <span>06:00</span>
-                        <span>12:00</span>
-                        <span>18:00</span>
-                        <span>23:00</span>
-                      </div>
-                      <p className="chart-note">{report.timezone} · 播放次数</p>
-                    </>
-                  ) : (
-                    <div className="decades">
-                      {report.metrics.decades.map((d) => (
-                        <div key={d.name}>
-                          <span>{d.name}</span>
-                          <div>
-                            <i style={{ width: percent(total ? d.count / total : 0) }} />
-                          </div>
-                          <strong>{d.count} 次</strong>
-                        </div>
-                      ))}
-                      <p className="chart-note">按发行版本计</p>
+                  {hasComment && (
+                    <div className="review-foot">
+                      <span>{report.demo ? '示例乐评' : 'AI 乐评'}</span>
                     </div>
                   )}
-                </div>
-              </div>
-            </section>
-            {report.discoveries.length > 0 && (
-              <section className="discoveries">
-                <div className="section-heading">
-                  <h2>
-                    Between the tracks <span>选曲之间</span>
-                  </h2>
-                </div>
-                <div className="discovery-grid">
-                  {report.discoveries.map((d, i) => (
-                    <article key={i}>
-                      <h3>{d.title}</h3>
-                      <p>{d.body}</p>
-                      <div className="linked-tracks">
-                        {d.track_ids.map((id) => {
-                          const t = findTrack(id);
-                          return (
-                            t && (
-                              <a key={id} href={t.url} target="_blank" rel="noreferrer">
-                                {t.name}
-                                <ArrowUpRight size={13} />
-                              </a>
-                            )
-                          );
-                        })}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            )}
-            {report.fun_facts.length > 0 && (
-              <section className="stories">
-                {report.fun_facts.map((f, i) => (
-                  <article className="story" key={i}>
-                    <div className="story-mark">
-                      <BookOpen size={30} />
-                      <span>Behind the song</span>
-                      <span>歌曲还有这一面</span>
+                </article>
+                <aside className="profile">
+                  <div className="profile-top">
+                    <AudioLines size={25} />
+                    <span>{side === 'b' ? '略过的声音' : '这一期的声音'}</span>
+                  </div>
+                  <h2>{missingComment ? '本期选曲' : report.taste_profile.headline}</h2>
+                  <div className="tags">
+                    {report.taste_profile.tags.map((t) => (
+                      <span key={t}>{t}</span>
+                    ))}
+                  </div>
+                  <div className="profile-numbers">
+                    <div>
+                      <strong>{report.metrics.tracks}</strong>
+                      <span>首不同歌曲</span>
                     </div>
-                    <div className="story-copy">
-                      <h2>{f.title}</h2>
-                      <p>{f.body}</p>
-                      {f.listen_for && (
-                        <p className="listen-for">
-                          <Headphones size={16} />
-                          {f.listen_for}
-                        </p>
-                      )}
-                      <a href={f.source.url} target="_blank" rel="noreferrer" className="source">
-                        来源：{f.source.title}
-                        <ArrowUpRight size={14} />
-                      </a>
+                    <div>
+                      <strong>{report.metrics.artists}</strong>
+                      <span>位歌手</span>
                     </div>
-                  </article>
-                ))}
-              </section>
-            )}
-            {report.taste_evolution && (
-              <section className="evolution">
-                <div className="section-heading">
-                  <h2>
-                    Taste evolution <span>与上期相比</span>
-                  </h2>
-                </div>
-                <h3>{report.taste_evolution.headline}</h3>
-                <p>{report.taste_evolution.body}</p>
-                {report.previous && (
-                  <p className="chart-note">
-                    本期 {total} 条 / 上期 {report.previous.plays} 条记录
-                  </p>
-                )}
-              </section>
-            )}
-            {report.recommendations.length > 0 && (
-              <section className="recommendations">
-                <div className="section-heading">
-                  <h2>
-                    Next on your record shelf <span>接下来听什么</span>
-                  </h2>
-                </div>
-                <div className="recommendation-grid">
-                  {report.recommendations.map((r) => (
-                    <article key={r.track.id}>
-                      <div className="rec-top">
-                        <span>{r.direction}</span>
-                        <TrackLink track={r.track} />
-                      </div>
-                      <div className="rec-track">
-                        <Cover track={r.track} large />
-                        <div>
-                          <h3>{r.track.name}</h3>
-                          <p>{r.track.artists.map((a) => a.name).join(', ')}</p>
+                    <div>
+                      <strong>{percent(report.metrics.repeat_ratio)}</strong>
+                      <span>{side === 'b' ? '重复跳过占比' : '本期重听'}</span>
+                    </div>
+                  </div>
+                  <div className="small-label">
+                    {side === 'b' ? '擦肩而过的作品' : '反复出现的作品'}
+                  </div>
+                  <div className="top-tracks">
+                    {report.metrics.top_tracks.slice(0, 4).map(({ track, count }) => (
+                      <div className="track-row" key={track.id}>
+                        <Cover track={track} />
+                        <div className="track-info">
+                          <strong>{track.name}</strong>
+                          <span>{track.artists.map((a) => a.name).join(', ')}</span>
                         </div>
+                        <span className="play-count">{count} 次</span>
+                        <TrackLink track={track} />
                       </div>
-                      <p className="reason">{r.reason}</p>
-                      <span className="connection">
-                        从 {findTrack(r.connection_track_id)?.name ?? '本期选曲'} 出发
-                      </span>
-                      {(status?.owner || demo) && (
-                        <div className="feedback">
-                          {[
-                            ['like', '喜欢'],
-                            ['dislike', '不合口味'],
-                            ['known', '听过了'],
-                          ].map(([value, label]) => (
-                            <button
-                              key={value}
-                              aria-pressed={feedback[r.track.id] === value}
-                              onClick={() => void react(r.track, value)}
-                            >
-                              {value === 'like' ? (
-                                <Heart size={14} />
-                              ) : value === 'known' ? (
-                                <Check size={14} />
-                              ) : null}
-                              {label}
-                            </button>
+                    ))}
+                  </div>
+                </aside>
+              </section>
+              <section className="metrics-section">
+                <div className="section-heading">
+                  <h2>
+                    {side === 'b' ? 'The other side' : 'Taste map'}{' '}
+                    <span>{side === 'b' ? '品味的另一面' : '听觉侧写'}</span>
+                  </h2>
+                </div>
+                <div className="metrics-grid">
+                  <div className="genre-panel">
+                    <h3>
+                      风格的组成 <span className="pill">AI 分类</span>
+                    </h3>
+                    <div className="genre-strip" aria-label="风格占比">
+                      {report.metrics.genres.map((g, i) => (
+                        <span
+                          key={g.name}
+                          style={{
+                            width: (total ? (g.count / total) * 100 : 0) + '%',
+                            background: `var(--series-${i % 5})`,
+                          }}
+                          title={`${g.name} ${g.count} 次`}
+                        />
+                      ))}
+                    </div>
+                    <div className="genre-legend">
+                      {report.metrics.genres.map((g, i) => (
+                        <div key={g.name}>
+                          <span
+                            className="legend-dot"
+                            style={{ background: `var(--series-${i % 5})` }}
+                          />
+                          <span>{g.name}</span>
+                          <strong>{percent(total ? g.count / total : null)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="time-panel">
+                    <div className="panel-title">
+                      <h3>
+                        {metricView === 'hours'
+                          ? side === 'b'
+                            ? '跳过发生的时刻'
+                            : '音乐出现的时刻'
+                          : '唱片的年代'}
+                      </h3>
+                      <div className="mini-switch">
+                        <button
+                          aria-pressed={metricView === 'hours'}
+                          onClick={() => setMetricView('hours')}
+                        >
+                          时段
+                        </button>
+                        <button
+                          aria-pressed={metricView === 'decades'}
+                          onClick={() => setMetricView('decades')}
+                        >
+                          年代
+                        </button>
+                      </div>
+                    </div>
+                    {metricView === 'hours' ? (
+                      <>
+                        <div
+                          className="hour-chart"
+                          role="img"
+                          aria-label={
+                            (side === 'b' ? '每小时跳过记录：' : '每小时播放记录：') +
+                            report.metrics.hours.map((n, i) => `${i}点${n}次`).join('，')
+                          }
+                        >
+                          {report.metrics.hours.map((n, i) => (
+                            <div className="hour-column" key={i}>
+                              <span className="hour-tooltip">
+                                {String(i).padStart(2, '0')}:00 · {n} 次
+                              </span>
+                              <div
+                                style={{
+                                  height:
+                                    Math.max(2, (n / Math.max(1, ...report.metrics.hours)) * 120) +
+                                    'px',
+                                }}
+                              />
+                            </div>
                           ))}
                         </div>
-                      )}
-                    </article>
-                  ))}
+                        <div className="hour-axis">
+                          <span>00:00</span>
+                          <span>06:00</span>
+                          <span>12:00</span>
+                          <span>18:00</span>
+                          <span>23:00</span>
+                        </div>
+                        <p className="chart-note">
+                          {report.timezone} · {side === 'b' ? '跳过次数' : '播放次数'}
+                        </p>
+                      </>
+                    ) : (
+                      <div className="decades">
+                        {report.metrics.decades.map((d) => (
+                          <div key={d.name}>
+                            <span>{d.name}</span>
+                            <div>
+                              <i style={{ width: percent(total ? d.count / total : 0) }} />
+                            </div>
+                            <strong>{d.count} 次</strong>
+                          </div>
+                        ))}
+                        <p className="chart-note">按发行版本计</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </section>
-            )}
-            <details className="track-list">
-              <summary>本期歌单 · {report.metrics.tracks} 首</summary>
-              {report.tracks.map((t) => (
-                <div className="track-row" key={t.id}>
-                  <Cover track={t} />
-                  <div className="track-info">
-                    <strong>{t.name}</strong>
-                    <span>
-                      {t.artists.map((a) => a.name).join(', ')} / {t.album}
-                    </span>
+              {report.discoveries.length > 0 && (
+                <section className="discoveries">
+                  <div className="section-heading">
+                    <h2>
+                      {side === 'b' ? 'Between the sides' : 'Between the tracks'}{' '}
+                      <span>{side === 'b' ? '取舍之间' : '选曲之间'}</span>
+                    </h2>
                   </div>
-                  <TrackLink track={t} />
-                </div>
-              ))}
-            </details>
-            <details className="data-note">
-              <summary>关于本期</summary>
-              <p>来自 Spotify 最近播放，可能不含本期全部记录。统计按播放次数计算。</p>
-              <p>风格标签由 AI 推测，未经音频分析；年代以所收录的发行版本为准。</p>
-              {hasComment && <p>乐评模型：{report.model}</p>}
-            </details>
+                  <div className="discovery-grid">
+                    {report.discoveries.map((d, i) => (
+                      <article key={i}>
+                        <h3>{d.title}</h3>
+                        <p>{d.body}</p>
+                        <div className="linked-tracks">
+                          {d.track_ids.map((id) => {
+                            const t = findTrack(id);
+                            return (
+                              t && (
+                                <a key={id} href={t.url} target="_blank" rel="noreferrer">
+                                  {t.name}
+                                  <ArrowUpRight size={13} />
+                                </a>
+                              )
+                            );
+                          })}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {report.fun_facts.length > 0 && (
+                <section className="stories">
+                  {report.fun_facts.map((f, i) => (
+                    <article className="story" key={i}>
+                      <div className="story-mark">
+                        <BookOpen size={30} />
+                        <span>Behind the song</span>
+                        <span>歌曲还有这一面</span>
+                      </div>
+                      <div className="story-copy">
+                        <h2>{f.title}</h2>
+                        <p>{f.body}</p>
+                        {f.listen_for && (
+                          <p className="listen-for">
+                            <Headphones size={16} />
+                            {f.listen_for}
+                          </p>
+                        )}
+                        <a href={f.source.url} target="_blank" rel="noreferrer" className="source">
+                          来源：{f.source.title}
+                          <ArrowUpRight size={14} />
+                        </a>
+                      </div>
+                    </article>
+                  ))}
+                </section>
+              )}
+              {report.taste_evolution && (
+                <section className="evolution">
+                  <div className="section-heading">
+                    <h2>
+                      Taste evolution <span>与上期相比</span>
+                    </h2>
+                  </div>
+                  <h3>{report.taste_evolution.headline}</h3>
+                  <p>{report.taste_evolution.body}</p>
+                  {report.previous && (
+                    <p className="chart-note">
+                      本期 {total} 条 / 上期 {report.previous.plays} 条记录
+                    </p>
+                  )}
+                </section>
+              )}
+              {report.recommendations.length > 0 && (
+                <section className="recommendations">
+                  <div className="section-heading">
+                    <h2>
+                      Next on your record shelf <span>接下来听什么</span>
+                    </h2>
+                  </div>
+                  <div className="recommendation-grid">
+                    {report.recommendations.map((r) => (
+                      <article key={r.track.id}>
+                        <div className="rec-top">
+                          <span>{r.direction}</span>
+                          <TrackLink track={r.track} />
+                        </div>
+                        <div className="rec-track">
+                          <Cover track={r.track} large />
+                          <div>
+                            <h3>{r.track.name}</h3>
+                            <p>{r.track.artists.map((a) => a.name).join(', ')}</p>
+                          </div>
+                        </div>
+                        <p className="reason">{r.reason}</p>
+                        <span className="connection">
+                          从 {findTrack(r.connection_track_id)?.name ?? '本期选曲'} 出发
+                        </span>
+                        {(status?.owner || demo) && (
+                          <div className="feedback">
+                            {[
+                              ['like', '喜欢'],
+                              ['dislike', '不合口味'],
+                              ['known', '听过了'],
+                            ].map(([value, label]) => (
+                              <button
+                                key={value}
+                                aria-pressed={feedback[r.track.id] === value}
+                                onClick={() => void react(r.track, value)}
+                              >
+                                {value === 'like' ? (
+                                  <Heart size={14} />
+                                ) : value === 'known' ? (
+                                  <Check size={14} />
+                                ) : null}
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
+              <details className="track-list">
+                <summary>
+                  {side === 'b' ? '略过的歌单' : '本期歌单'} · {report.metrics.tracks} 首
+                </summary>
+                {report.tracks.map((t) => (
+                  <div className="track-row" key={t.id}>
+                    <Cover track={t} />
+                    <div className="track-info">
+                      <strong>{t.name}</strong>
+                      <span>
+                        {t.artists.map((a) => a.name).join(', ')} / {t.album}
+                      </span>
+                    </div>
+                    <TrackLink track={t} />
+                  </div>
+                ))}
+              </details>
+              <details className="data-note">
+                <summary>关于本期</summary>
+                <p>来自 Spotify 最近播放，可能不含本期全部记录。统计按播放次数计算。</p>
+                {storedReport?.skip_rule && (
+                  <p>
+                    按相邻记录间隔大于 0、不超过 10
+                    秒，将前一条记为跳过。无后续记录或时间顺序不明时不判定。A 面不表示完整听完，B
+                    面不代表不喜欢；同一歌曲的不同记录可以出现在两面。
+                  </p>
+                )}
+                <p>风格标签由 AI 推测，未经音频分析；年代以所收录的发行版本为准。</p>
+                {hasComment && <p>乐评模型：{report.model}</p>}
+              </details>
+            </div>
           </>
         )}
         {!demo && archive.length > 0 && (
@@ -986,7 +1071,7 @@ function App() {
           </dialog>
         </div>
       )}
-    </>
+    </div>
   );
 }
 createRoot(document.getElementById('root')!).render(<App />);

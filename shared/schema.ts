@@ -30,7 +30,29 @@ export const classificationSchema = z.object({
 });
 export type Classification = z.infer<typeof classificationSchema>;
 export type Source = { id: string; track_id: string; title: string; url: string; excerpt: string };
+export const bEditorialSchema = z.object({
+  taste_comment: z.object({
+    title: z.string().min(1).max(90),
+    standfirst: z.string().max(200),
+    paragraphs: z.array(z.string().min(1).max(1400)).min(1).max(3),
+    track_ids: z.array(z.string()).max(8),
+  }),
+  taste_profile: z.object({
+    headline: z.string().max(80),
+    tags: z.array(z.string().max(30)).max(6),
+  }),
+  discoveries: z
+    .array(
+      z.object({
+        title: z.string().max(70),
+        body: z.string().max(350),
+        track_ids: z.array(z.string()).max(6),
+      }),
+    )
+    .max(3),
+});
 export const editorialSchema = z.object({
+  b_side: bEditorialSchema.nullable(),
   taste_comment: z.object({
     title: z.string().min(1).max(90),
     standfirst: z.string().max(200),
@@ -93,7 +115,11 @@ export type Metrics = {
   top_artists: { name: string; count: number }[];
   observed_days: number;
 };
+export type ReportSide = z.infer<typeof bEditorialSchema> & { metrics: Metrics; tracks: Track[] };
 export type Report = {
+  b_side?: ReportSide;
+  collected_plays?: number;
+  skip_rule?: 'gap-10s-v1';
   id: string;
   type: PeriodType;
   date: string;
