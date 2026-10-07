@@ -52,6 +52,13 @@ export const bEditorialSchema = z.object({
     .max(3),
 });
 export const editorialSchema = z.object({
+  partition: z.object({
+    a_track_ids: z.array(z.string()).min(1),
+    b_track_ids: z.array(z.string()),
+    a_label: z.string().min(1).max(40),
+    b_label: z.string().max(40),
+    contrast: z.string().max(200),
+  }),
   b_side: bEditorialSchema.nullable(),
   taste_comment: z.object({
     title: z.string().min(1).max(90),
@@ -119,6 +126,9 @@ export type ReportSide = z.infer<typeof bEditorialSchema> & { metrics: Metrics; 
 export type Report = {
   b_side?: ReportSide;
   collected_plays?: number;
+  side_mode?: 'taste-clusters-v1';
+  partition?: Editorial['partition'];
+  period_metrics?: Metrics;
   skip_rule?: 'gap-10s-v1';
   id: string;
   type: PeriodType;

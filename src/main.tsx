@@ -21,7 +21,7 @@ import { demoReport } from '../shared/demo';
 import type { PeriodType, Report, Track } from '../shared/schema';
 import './styles.css';
 import { ShareDialog } from './ShareDialog';
-import { sideReport } from '../shared/sides';
+import { sideReport, currentBSide } from '../shared/sides';
 type Generation = {
   verified_owner: boolean;
   next_allowed_at: string | null;
@@ -492,18 +492,22 @@ function App() {
                 {type !== 'day' && '— ' + addDays(report.end_date, -1).replaceAll('-', '.')}
               </span>
               <span>
-                {side === 'b' && !storedReport?.b_side ? (
+                {side === 'b' && (!storedReport || !currentBSide(storedReport)) ? (
                   'B 面尚未生成'
                 ) : (
                   <>
-                    {side === 'b' ? '记录到' : '收录'} {total} 次{side === 'b' ? '跳过' : '播放'} ·{' '}
-                    {report.metrics.observed_days} 天有记录
+                    收录 {total} 次播放 · {report.metrics.observed_days} 天有记录
                   </>
                 )}
               </span>
             </div>
             <div className="record-switch" role="group" aria-label="唱片双面">
-              <button aria-pressed={side === 'a'} disabled={flipping} onClick={() => flip('a')}>
+              <button
+                aria-label="A 面 Taste today."
+                aria-pressed={side === 'a'}
+                disabled={flipping}
+                onClick={() => flip('a')}
+              >
                 <b>A 面</b>
                 <span>Taste today.</span>
               </button>
@@ -511,9 +515,14 @@ function App() {
                 <i />
                 <em>{side.toUpperCase()}</em>
               </div>
-              <button aria-pressed={side === 'b'} disabled={flipping} onClick={() => flip('b')}>
+              <button
+                aria-label="B 面 Another take."
+                aria-pressed={side === 'b'}
+                disabled={flipping}
+                onClick={() => flip('b')}
+              >
                 <b>B 面</b>
-                <span>Not today.</span>
+                <span>Another take.</span>
               </button>
             </div>
             <div
@@ -526,8 +535,8 @@ function App() {
               <section className="opening">
                 <article className="review">
                   <div className="section-caption">
-                    <span>{side === 'b' ? 'Not today.' : 'Taste comment'}</span>
-                    <span>{side === 'b' ? '这一期，擦肩而过' : '关于这一期的选择'}</span>
+                    <span>{side === 'b' ? 'Another take.' : 'Taste comment'}</span>
+                    <span>{side === 'b' ? '同一期的另一种声音' : '关于这一期的选择'}</span>
                   </div>
                   <h1>
                     {missingComment
@@ -539,7 +548,7 @@ function App() {
                   <p className="standfirst">
                     {missingComment
                       ? side === 'b'
-                        ? '跳过记录已保存。'
+                        ? '选曲记录已保存。'
                         : '播放记录已保存。'
                       : report.taste_comment.standfirst}
                   </p>
@@ -562,7 +571,12 @@ function App() {
                 <aside className="profile">
                   <div className="profile-top">
                     <AudioLines size={25} />
-                    <span>{side === 'b' ? '略过的声音' : '这一期的声音'}</span>
+                    <span>
+                      {(side === 'b'
+                        ? storedReport?.partition?.b_label
+                        : storedReport?.partition?.a_label) ||
+                        (side === 'b' ? '另一种声音' : '这一期的声音')}
+                    </span>
                   </div>
                   <h2>{missingComment ? '本期选曲' : report.taste_profile.headline}</h2>
                   <div className="tags">
@@ -581,11 +595,11 @@ function App() {
                     </div>
                     <div>
                       <strong>{percent(report.metrics.repeat_ratio)}</strong>
-                      <span>{side === 'b' ? '重复跳过占比' : '本期重听'}</span>
+                      <span>{'本面重听'}</span>
                     </div>
                   </div>
                   <div className="small-label">
-                    {side === 'b' ? '擦肩而过的作品' : '反复出现的作品'}
+                    {side === 'b' ? '这一面的作品' : '反复出现的作品'}
                   </div>
                   <div className="top-tracks">
                     {report.metrics.top_tracks.slice(0, 4).map(({ track, count }) => (
@@ -644,7 +658,7 @@ function App() {
                       <h3>
                         {metricView === 'hours'
                           ? side === 'b'
-                            ? '跳过发生的时刻'
+                            ? '音乐出现的时刻'
                             : '音乐出现的时刻'
                           : '唱片的年代'}
                       </h3>
@@ -669,7 +683,7 @@ function App() {
                           className="hour-chart"
                           role="img"
                           aria-label={
-                            (side === 'b' ? '每小时跳过记录：' : '每小时播放记录：') +
+                            (side === 'b' ? '每小时播放记录：' : '每小时播放记录：') +
                             report.metrics.hours.map((n, i) => `${i}点${n}次`).join('，')
                           }
                         >
@@ -696,7 +710,7 @@ function App() {
                           <span>23:00</span>
                         </div>
                         <p className="chart-note">
-                          {report.timezone} · {side === 'b' ? '跳过次数' : '播放次数'}
+                          {report.timezone} · {side === 'b' ? '播放次数' : '播放次数'}
                         </p>
                       </>
                     ) : (
@@ -721,7 +735,7 @@ function App() {
                   <div className="section-heading">
                     <h2>
                       {side === 'b' ? 'Between the sides' : 'Between the tracks'}{' '}
-                      <span>{side === 'b' ? '取舍之间' : '选曲之间'}</span>
+                      <span>{side === 'b' ? '选曲之间' : '选曲之间'}</span>
                     </h2>
                   </div>
                   <div className="discovery-grid">
@@ -778,14 +792,18 @@ function App() {
                 <section className="evolution">
                   <div className="section-heading">
                     <h2>
-                      Taste evolution <span>与上期相比</span>
+                      Taste evolution <span>全期 · 与上期相比</span>
                     </h2>
                   </div>
                   <h3>{report.taste_evolution.headline}</h3>
                   <p>{report.taste_evolution.body}</p>
                   {report.previous && (
                     <p className="chart-note">
-                      本期 {total} 条 / 上期 {report.previous.plays} 条记录
+                      全期{' '}
+                      {storedReport?.period_metrics?.plays ??
+                        storedReport?.collected_plays ??
+                        total}{' '}
+                      条 / 上期 {report.previous.plays} 条记录
                     </p>
                   )}
                 </section>
@@ -844,7 +862,7 @@ function App() {
               )}
               <details className="track-list">
                 <summary>
-                  {side === 'b' ? '略过的歌单' : '本期歌单'} · {report.metrics.tracks} 首
+                  {side === 'b' ? '这一面的歌单' : '本期歌单'} · {report.metrics.tracks} 首
                 </summary>
                 {report.tracks.map((t) => (
                   <div className="track-row" key={t.id}>
@@ -862,11 +880,10 @@ function App() {
               <details className="data-note">
                 <summary>关于本期</summary>
                 <p>来自 Spotify 最近播放，可能不含本期全部记录。统计按播放次数计算。</p>
-                {storedReport?.skip_rule && (
+                {storedReport?.side_mode === 'taste-clusters-v1' && (
                   <p>
-                    按相邻记录间隔大于 0、不超过 10
-                    秒，将前一条记为跳过。无后续记录或时间顺序不明时不判定。A 面不表示完整听完，B
-                    面不代表不喜欢；同一歌曲的不同记录可以出现在两面。
+                    按风格与音乐特征分组，每首歌只属于一面。分组是 AI
+                    对选曲的解读，不表示喜欢或不喜欢；没有鲜明对照时 B 面留白。
                   </p>
                 )}
                 <p>风格标签由 AI 推测，未经音频分析；年代以所收录的发行版本为准。</p>

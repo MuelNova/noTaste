@@ -1469,12 +1469,24 @@ button:disabled {
 }
 .side-b .opening,
 .side-b .evolution,
+.side-b .recommendation-grid article,
+.side-b .story,
 .side-b .archive button {
   background: #203544;
+}
+.side-b .story-mark,
+.side-b .rec-top > span,
+.side-b .source,
+.side-b .feedback button[aria-pressed='true'] {
+  color: #d4bfdf;
+}
+.side-b .feedback {
+  border-color: var(--line);
 }
 .side-b .profile {
   background: #334153;
 }
+.side-b .story-copy > p,
 .side-b .standfirst,
 .side-b .discovery-grid p {
   color: #bfccd7;

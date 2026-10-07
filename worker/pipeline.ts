@@ -11,7 +11,7 @@ import type { Env } from './env';
 import { recent, findTrack } from './spotify';
 import { classify, writeEditorial } from './llm';
 import { songSource } from './sources';
-import { splitPlays, emptyBSide } from '../shared/sides';
+import { partitionPlays, emptyBSide } from '../shared/sides';
 import { claimJob, startQueuedJob, type ReportTask } from './jobs';
 export async function getPlays(env: Env, start: string, end: string) {
   const rows = await env.DB.prepare(
@@ -65,11 +65,12 @@ export async function generate(env: Env, type: PeriodType, date: string) {
           ),
         ]);
     }
-    const periodPlays = await getPlays(env, start, addDays(end, 1));
-    const { a: plays, b: skipped } = splitPlays(periodPlays, start, end, timezone);
+    const plays = dedupe(await getPlays(env, start, end));
     const tracks = [...new Map(plays.map((p) => [p.track.id, p.track])).values()];
-    const skippedTracks = [...new Map(skipped.map((p) => [p.track.id, p.track])).values()];
-    const allTracks = [...new Map([...tracks, ...skippedTracks].map((t) => [t.id, t])).values()];
+    const allTracks = tracks;
+    const trackCounts = new Map<string, number>();
+    for (const play of plays)
+      trackCounts.set(play.track.id, (trackCounts.get(play.track.id) ?? 0) + 1);
     let labels = await allLabels(env);
     await stage(env, id, '整理音乐标签');
     const known = new Set(labels.map((l) => l.track_id)),
@@ -89,12 +90,7 @@ export async function generate(env: Env, type: PeriodType, date: string) {
       }
     }
     const prev = previousBounds(type, start),
-      previousPlays = splitPlays(
-        await getPlays(env, prev.start, addDays(prev.end, 1)),
-        prev.start,
-        prev.end,
-        timezone,
-      ).a;
+      previousPlays = dedupe(await getPlays(env, prev.start, prev.end));
     const historyRows = await env.DB.prepare(
       "SELECT DISTINCT json_extract(a.value,'$.id') AS id FROM tracks t, json_each(t.data,'$.artists') a WHERE EXISTS (SELECT 1 FROM plays p WHERE p.track_id=t.id AND p.local_date<?)",
     )
@@ -103,20 +99,7 @@ export async function generate(env: Env, type: PeriodType, date: string) {
     const priorArtists = new Set<string>(historyRows.results.map((r) => r.id));
     const metrics = calculateMetrics(plays, labels, timezone, priorArtists),
       previous = previousPlays.length ? calculateMetrics(previousPlays, labels, timezone) : null;
-    const bSide = {
-      ...emptyBSide(timezone),
-      metrics: calculateMetrics(skipped, labels, timezone),
-      tracks: skippedTracks,
-    };
-    if (skipped.length) {
-      bSide.taste_comment = {
-        title: '今天略过的声音',
-        standfirst: '跳过记录已保存，短评暂未生成。',
-        paragraphs: [],
-        track_ids: [],
-      };
-      bSide.taste_profile.headline = '这一期的另一面';
-    }
+    const bSide = emptyBSide(timezone, !!plays.length);
     const empty: Report = {
       id,
       type,
@@ -129,21 +112,16 @@ export async function generate(env: Env, type: PeriodType, date: string) {
       warnings,
       metrics,
       b_side: bSide,
-      collected_plays: plays.length + skipped.length,
-      skip_rule: 'gap-10s-v1',
+      collected_plays: plays.length,
+      period_metrics: metrics,
+      side_mode: 'taste-clusters-v1',
       previous,
       tracks,
       taste_comment: {
-        title: plays.length
-          ? '这一期，先听音乐。'
-          : skipped.length
-            ? '这一面，今天留白。'
-            : '这一天，暂无收集到的播放',
+        title: plays.length ? '这一期，先听音乐。' : '这一期，暂无收集到的播放',
         standfirst: plays.length
           ? '播放记录已保存，乐评暂未生成。'
-          : skipped.length
-            ? '本期采集的记录都在 B 面。'
-            : '采集结果为空，不代表这一天没有听歌。',
+          : '采集结果为空，不代表这一期没有听歌。',
         paragraphs: [],
         track_ids: [],
       },
@@ -153,10 +131,10 @@ export async function generate(env: Env, type: PeriodType, date: string) {
       recommendations: [],
       taste_evolution: null,
       model: env.KIMI_MODEL,
-      prompt_version: '3',
+      prompt_version: '4',
     };
     let report = empty;
-    if (plays.length || skipped.length) {
+    if (plays.length) {
       await stage(env, id, '寻找歌曲背后的故事');
       const sources = (
         await Promise.all(metrics.top_tracks.slice(0, 2).map((t) => songSource(env, t.track)))
@@ -171,20 +149,19 @@ export async function generate(env: Env, type: PeriodType, date: string) {
         ).all();
         const e = await writeEditorial(env, {
           type,
-          tracks: tracks.slice(0, 150),
-          skipped: { tracks: skippedTracks.slice(0, 100), metrics: bSide.metrics },
+          tracks,
+          track_counts: [...trackCounts].map(([track_id, count]) => ({ track_id, count })),
           metrics,
           previous,
-          classifications: labels
-            .filter((l) => allTracks.some((t) => t.id === l.track_id))
-            .slice(0, 150),
+          classifications: labels.filter((l) => allTracks.some((t) => t.id === l.track_id)),
           sources,
           previous_comment: last ? (JSON.parse(last.data) as Report).taste_comment : null,
           feedback: feedback.results,
         });
         const ids = new Set(allTracks.map((t) => t.id));
-        const aIds = new Set(tracks.map((t) => t.id));
-        const bIds = new Set(skippedTracks.map((t) => t.id));
+        const groups = partitionPlays(plays, e.partition);
+        const aIds = new Set(e.partition.a_track_ids);
+        const bIds = new Set(e.partition.b_track_ids);
         const facts = e.fun_facts.flatMap((f) => {
           const s = sources.find((s) => s.id === f.source_id && s.track_id === f.track_id);
           if (
@@ -200,7 +177,7 @@ export async function generate(env: Env, type: PeriodType, date: string) {
         await stage(env, id, '核对推荐歌曲');
         const recommendations: Report['recommendations'] = [];
         for (const r of e.recommendations) {
-          if (!aIds.has(r.connection_track_id)) continue;
+          if (!ids.has(r.connection_track_id)) continue;
           try {
             const track = await findTrack(env, r.name, r.artist);
             if (
@@ -222,42 +199,19 @@ export async function generate(env: Env, type: PeriodType, date: string) {
         report = {
           ...empty,
           ...e,
-          b_side:
-            skipped.length && e.b_side
-              ? {
-                  ...bSide,
-                  ...e.b_side,
-                  taste_comment: {
-                    ...e.b_side.taste_comment,
-                    track_ids: e.b_side.taste_comment.track_ids.filter((id) => bIds.has(id)),
-                  },
-                  discoveries: e.b_side.discoveries.map((d) => ({
-                    ...d,
-                    track_ids: d.track_ids.filter((id) => ids.has(id)),
-                  })),
-                }
-              : bSide,
-          taste_comment: plays.length
+          metrics: calculateMetrics(groups.a, labels, timezone, priorArtists),
+          tracks: tracks.filter((t) => aIds.has(t.id)),
+          b_side: e.b_side
             ? {
-                ...e.taste_comment,
-                track_ids: e.taste_comment.track_ids.filter((id) => aIds.has(id)),
+                ...e.b_side,
+                metrics: calculateMetrics(groups.b, labels, timezone, priorArtists),
+                tracks: tracks.filter((t) => bIds.has(t.id)),
               }
-            : empty.taste_comment,
-          taste_profile: plays.length ? e.taste_profile : empty.taste_profile,
-          discoveries: !plays.length
-            ? []
-            : e.discoveries.map((d) => ({
-                ...d,
-                track_ids: d.track_ids.filter((id) => aIds.has(id)),
-              })),
+            : emptyBSide(timezone),
           fun_facts: facts,
           recommendations,
           taste_evolution: plays.length && previous ? e.taste_evolution : null,
         };
-        if (skipped.length && !e.b_side) {
-          report.status = 'partial';
-          warnings.push('B 面短评暂未生成');
-        }
       } catch (e) {
         report.status = 'partial';
         warnings.push(e instanceof Error ? e.message : '乐评生成失败');

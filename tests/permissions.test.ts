@@ -430,55 +430,62 @@ test('failed Spotify refresh triggers alert while preserving refresh token for r
   }
 });
 
-test('generation persists both sides in one editorial call and discards invented empty B', async () => {
+test('generation clusters all plays in one editorial call and preserves full-period comparisons', async () => {
   const { demoReport, demoTracks } = await import('../shared/demo');
   const original = globalThis.fetch;
   try {
-    for (const hasSkip of [true, false]) {
+    for (const mode of ['two', 'one', 'invalid'] as const) {
       const { env, sqlite } = database();
       try {
-        for (const track of demoTracks.slice(0, 2)) {
-          sqlite.prepare('INSERT INTO tracks(id,data,classification) VALUES(?,?,?)').run(
-            track.id,
-            JSON.stringify(track),
-            JSON.stringify({
-              track_id: track.id,
-              genre: '未知',
-              subgenres: [],
-              moods: [],
-              language: '未知',
-              confidence: 0,
-            }),
-          );
-        }
-        for (const [i, at] of [
-          '2026-09-21T02:00:00Z',
-          hasSkip ? '2026-09-21T02:00:10Z' : '2026-09-21T02:03:00Z',
-        ].entries()) {
+        for (const track of demoTracks.slice(0, 4))
+          sqlite
+            .prepare('INSERT INTO tracks(id,data,classification) VALUES(?,?,?)')
+            .run(
+              track.id,
+              JSON.stringify(track),
+              JSON.stringify({ track_id: track.id, genre: '未知', subgenres: [], textures: [] }),
+            );
+        // Close timestamps must no longer remove a play. Same song's repeats stay together.
+        for (const [i, t] of [0, 1, 2, 3, 0].entries())
           sqlite
             .prepare('INSERT INTO plays VALUES(?,?,?,?)')
-            .run(demoTracks[i].id, at, '2026-09-21', null);
-        }
+            .run(demoTracks[t].id, `2026-09-21T02:00:0${i}Z`, '2026-09-21', null);
         const demo = demoReport('week');
         const output = {
           ...demo,
+          partition: {
+            a_track_ids:
+              mode === 'one' ? demoTracks.slice(0, 4).map((t) => t.id) : ['demo-0', 'demo-1'],
+            b_track_ids: mode === 'one' ? [] : ['demo-2', 'demo-3'],
+            a_label: '电子',
+            b_label: mode === 'one' ? '' : '吉他',
+            contrast: mode === 'one' ? '' : '两种不同风格',
+          },
+          taste_comment: { ...demo.taste_comment, track_ids: ['demo-0'] },
+          discoveries: [],
           recommendations: [],
           fun_facts: [],
-          b_side: {
-            ...demo.b_side,
-            taste_comment: {
-              ...demo.b_side!.taste_comment,
-              track_ids: [demoTracks[0].id, demoTracks[1].id, 'invented'],
-            },
-          },
+          b_side:
+            mode === 'one'
+              ? null
+              : {
+                  ...demo.b_side,
+                  taste_comment: { ...demo.b_side!.taste_comment, track_ids: ['demo-2'] },
+                  discoveries: [],
+                },
         };
+        if (mode === 'invalid') output.partition.b_track_ids = ['demo-0', 'fake'];
         let calls = 0;
         globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
           if (String(url).endsWith('/chat/completions')) {
             calls++;
-            const input = JSON.parse(JSON.parse(String(init?.body)).messages[1].content);
-            assert.equal(input.metrics.plays, hasSkip ? 1 : 2);
-            assert.equal(input.skipped.metrics.plays, hasSkip ? 1 : 0);
+            const body = JSON.parse(String(init?.body));
+            if (calls === 1) {
+              const input = JSON.parse(body.messages[1].content);
+              assert.equal(input.metrics.plays, 5);
+              assert.equal(input.tracks.length, 4);
+              assert.equal(input.skipped, undefined);
+            }
             return Response.json({
               choices: [{ message: { content: JSON.stringify(output) }, finish_reason: 'stop' }],
             });
@@ -487,15 +494,16 @@ test('generation persists both sides in one editorial call and discards invented
         }) as typeof fetch;
         await generate(env, 'week', '2026-09-21');
         const row = sqlite.prepare('SELECT data FROM reports').get() as { data: string };
-        assert(row, 'report saved');
+        assert(row, 'report saved even on invalid partition');
         const result = JSON.parse(row.data);
-        assert.equal(calls, 1);
-        assert.equal(result.status, 'complete');
-        assert.equal(result.collected_plays, 2);
-        assert.equal(result.metrics.plays, hasSkip ? 1 : 2);
-        assert.equal(result.b_side.metrics.plays, hasSkip ? 1 : 0);
-        assert.deepEqual(result.b_side.taste_comment.track_ids, hasSkip ? [demoTracks[0].id] : []);
-        if (!hasSkip) assert.deepEqual(result.b_side.taste_comment.paragraphs, []);
+        assert.equal(calls, mode === 'invalid' ? 2 : 1);
+        assert.equal(result.status, mode === 'invalid' ? 'partial' : 'complete');
+        assert.equal(result.collected_plays, 5);
+        assert.equal(result.period_metrics.plays, 5);
+        assert.equal(result.metrics.plays, mode === 'two' ? 3 : 5);
+        assert.equal(result.b_side.metrics.plays, mode === 'two' ? 2 : 0);
+        assert.equal(result.skip_rule, undefined);
+        assert.equal(result.side_mode, 'taste-clusters-v1');
       } finally {
         sqlite.close();
       }

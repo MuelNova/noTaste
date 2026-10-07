@@ -53,8 +53,11 @@ export function demoReport(type: PeriodType = 'day', date = '2026-09-22'): Repor
       context: i % 5 ? 'playlist' : 'album',
     })),
   ).flat();
+  const bIds = new Set(['demo-2', 'demo-7', 'demo-8', 'demo-11']);
+  const aPlays = plays.filter((p) => !bIds.has(p.track.id));
+  const bPlays = plays.filter((p) => bIds.has(p.track.id));
   const metrics = calculateMetrics(
-    plays,
+    aPlays,
     labels,
     'Australia/Perth',
     new Set(['Radiohead', 'Portishead', 'Slowdive']),
@@ -91,37 +94,27 @@ export function demoReport(type: PeriodType = 'day', date = '2026-09-22'): Repor
     warnings: [],
     metrics,
     previous,
-    tracks: demoTracks,
+    tracks: demoTracks.filter((t) => !bIds.has(t.id)),
     taste_comment: {
       title:
         type === 'day'
-          ? '失真的吉他，也有电子的体温。'
+          ? '循环之中，电子也有体温。'
           : type === 'week'
             ? '沿着低频，一路走进雾里。'
             : '这个月，声音的质地比流派更重要。',
-      standfirst:
-        'Radiohead、Portishead 与 Slowdive 之间，藏着一种相当一致的选择：旋律很好听，但声音不必光滑。',
+      standfirst: 'Radiohead、Portishead 与 Björk，把这一面的线索交给了电子与节奏。',
       paragraphs: [
-        '把《Idioteque》和《Alison》放在同一天，乍看像是从电子跳到了盯鞋。真正连接它们的，是让声音占满空间的方式：前者靠循环和不安定的节奏，后者靠漫开的吉他与埋进混响的人声。曲风在换，对声音质地的偏爱却很稳定。',
-        'Portishead 把这条线拉向了另一端。《Roads》的人声更靠前，留白也更多；它让前面那些密集的声音有了对照。这份选曲最有意思的地方，正在这种密度的切换里。',
-        '审美坐标很清楚，也相当稳妥：这些都是各自领域里反复被聆听的作品。下一次真正值得期待的，是沿着这种对质地的敏感，找到一个还没被熟悉名字占据的位置。',
+        '《Idioteque》与《Roads》把这一面的两端撑开：Radiohead 的电子实验与 Portishead 的 Trip-hop 都依赖循环，却把旋律放在不同的位置。相近的标签并没有抹平作品之间的差别。',
+        'Björk 的《Jóga》《Hyperballad》又把这组选曲引向 Art pop。它们和 Massive Attack 并列，让电子音乐在这份歌单里不只是一个流派名称，而是一组不同的表达方式。',
       ],
-      track_ids: ['demo-0', 'demo-1', 'demo-2'],
+      track_ids: ['demo-0', 'demo-1', 'demo-4'],
     },
-    taste_profile: {
-      headline: '偏爱有颗粒感的声音',
-      tags: ['Trip-hop', 'Shoegaze', 'Art pop', '低频', '空间感'],
-    },
+    taste_profile: { headline: '电子与循环的不同表达', tags: ['Trip-hop', 'IDM', 'Art pop'] },
     discoveries: [
       {
-        title: '共同点在声音里',
-        body: '《Idioteque》的循环与《Alison》的吉他并不属于同一种风格，但都把声音的层次放在很显眼的位置。',
-        track_ids: ['demo-0', 'demo-2'],
-      },
-      {
-        title: '给密集的声音留个空隙',
-        body: '《Roads》在人声周围留下空间，与这份选曲里的吉他声墙形成对照。',
-        track_ids: ['demo-1'],
+        title: '电子音乐的两条支线',
+        body: '《Idioteque》与《Roads》分别落在 IDM 与 Trip-hop 的语境里，同一组中仍有明显的风格跨度。',
+        track_ids: ['demo-0', 'demo-1'],
       },
     ],
     fun_facts: [
@@ -173,34 +166,39 @@ export function demoReport(type: PeriodType = 'day', date = '2026-09-22'): Repor
         }
       : null,
     model: 'demo',
-    prompt_version: '3',
-    skip_rule: 'gap-10s-v1',
-    collected_plays: metrics.plays + 3 * days,
+    prompt_version: '4',
+    side_mode: 'taste-clusters-v1',
+    collected_plays: plays.length,
+    period_metrics: calculateMetrics(plays, labels, 'Australia/Perth'),
+    partition: {
+      a_track_ids: demoTracks.filter((t) => !bIds.has(t.id)).map((t) => t.id),
+      b_track_ids: [...bIds],
+      a_label: '电子与循环',
+      b_label: '吉他与声景',
+      contrast: '电子与循环构成主线，另一面转向盯鞋与另类摇滚。',
+    },
     b_side: {
       ...emptyBSide('Australia/Perth'),
-      metrics: calculateMetrics(
-        plays
-          .filter((_, i) => i % 32 < 3)
-          .map((p, i) => ({ ...p, track: demoTracks[[4, 7, 0][i % 3]] })),
-        labels,
-        'Australia/Perth',
-      ),
-      tracks: [demoTracks[4], demoTracks[7], demoTracks[0]],
+      metrics: calculateMetrics(bPlays, labels, 'Australia/Perth'),
+      tracks: demoTracks.filter((t) => bIds.has(t.id)),
       taste_comment: {
-        title: '有些熟悉的声音，今天先略过。',
-        standfirst: '同一首《Idioteque》，既出现在留下的选曲里，也在这一面被略过。',
+        title: '吉他铺开的另一片天空。',
+        standfirst: 'Slowdive 与《Reckoner》，把同一期的另一条线索交给了吉他。',
         paragraphs: [
-          '《Jóga》《When the Sun Hits》与《Idioteque》落在这一面，把熟悉的电子与吉他音乐又排列了一次。它们与 A 面的距离并不遥远；这份示例里的取舍，发生在具体的播放之间。',
-          '《Idioteque》同时出现在两面，正是这张唱片最值得保留的矛盾。重复出现与偶尔略过可以并存，一次切歌并不会抹掉另一面的选择。',
+          '《Alison》《When the Sun Hits》与《Sugar for the Pill》让 Slowdive 成为这一面的中心。两张专辑的作品并列，勾勒出从 Shoegaze 到 Dream pop 的共同语境。',
+          'Radiohead 的《Reckoner》是这一组里的异色。它与三首 Slowdive 同属吉他音乐一侧，却没有完全落入同一个风格标签，让这一面保留了变化。',
         ],
-        track_ids: ['demo-4', 'demo-7', 'demo-0'],
+        track_ids: ['demo-2', 'demo-7', 'demo-8', 'demo-11'],
       },
-      taste_profile: { headline: '熟悉，也可以留待下次', tags: ['Art pop', 'Shoegaze', 'IDM'] },
+      taste_profile: {
+        headline: '盯鞋与另类摇滚的相遇',
+        tags: ['Shoegaze', 'Dream pop', 'Art rock'],
+      },
       discoveries: [
         {
-          title: '一首歌，两种去向',
-          body: '《Idioteque》在这一期示例中既被收录，也留下了跳过记录。两面的交集比单纯的喜欢与不喜欢更有意思。',
-          track_ids: ['demo-0'],
+          title: '一位歌手可以有两种位置',
+          body: '《Reckoner》以 Art rock 的身份加入 Slowdive 所在的一面。分组跟着作品走，并不把歌手固定在单一类别里。',
+          track_ids: ['demo-8'],
         },
       ],
     },

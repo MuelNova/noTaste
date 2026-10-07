@@ -1,5 +1,6 @@
 import type { Report } from '../shared/schema';
 import { addDays } from '../shared/metrics';
+import { currentBSide } from '../shared/sides';
 import { drawShareQr } from './share-qr';
 
 export function reportLink(report: Pick<Report, 'type' | 'date'>, origin: string) {
@@ -83,8 +84,9 @@ function cover(url: string | null): Promise<HTMLImageElement | null> {
 
 export async function renderShareCard(report: Report, publicUrl: string | null): Promise<Blob> {
   await Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 2500))]);
+  const bSide = currentBSide(report);
   const aTracks = report.metrics.top_tracks.slice(0, 2).map((item) => item.track);
-  const bTracks = report.b_side?.metrics.top_tracks.slice(0, 2).map((item) => item.track) ?? [];
+  const bTracks = bSide?.metrics.top_tracks.slice(0, 2).map((item) => item.track) ?? [];
   const covers = await Promise.all([...aTracks, ...bTracks].map((track) => cover(track.image)));
   const canvas = document.createElement('canvas');
   canvas.width = 1080;
@@ -179,13 +181,13 @@ export async function renderShareCard(report: Report, publicUrl: string | null):
 
   ctx.fillStyle = '#c4b1d4';
   ctx.font = `600 25px ${sans}`;
-  ctx.fillText('B 面 / Not today.', 600, 655);
+  ctx.fillText('B 面 / Another take.', 600, 655);
   ctx.fillStyle = '#e9f0f5';
-  const bTitle = !report.b_side
-    ? '这一期，还没有 B 面。'
-    : !report.b_side.metrics.plays
+  const bTitle = !bSide
+    ? '另一面，尚未成篇。'
+    : !bSide.metrics.plays
       ? '这一面，今天留白。'
-      : report.b_side.taste_comment.title;
+      : bSide.taste_comment.title;
   block(ctx, bTitle, 530, 696, 478, 46, 2, 700);
   bTracks.forEach((track, i) =>
     drawTrack(track, covers[aTracks.length + i], 610 + i * 230, 865, true),
@@ -194,7 +196,7 @@ export async function renderShareCard(report: Report, publicUrl: string | null):
     ctx.fillStyle = '#a8bac9';
     block(
       ctx,
-      report.b_side ? '本期暂无跳过记录。' : '重新生成后，可查看双面手记。',
+      bSide ? '本期尚未形成鲜明的第二组。' : '重新生成后，可查看双面手记。',
       560,
       943,
       430,
@@ -204,7 +206,7 @@ export async function renderShareCard(report: Report, publicUrl: string | null):
   }
   ctx.fillStyle = '#c4b1d4';
   ctx.font = `500 22px ${sans}`;
-  ctx.fillText(report.b_side ? `${report.b_side.metrics.plays} 次跳过` : 'B 面尚未生成', 72, 1080);
+  ctx.fillText(bSide ? `${bSide.metrics.plays} 次收录` : 'B 面尚未生成', 72, 1080);
   ctx.fillStyle = '#a8bac9';
   ctx.font = `400 19px ${sans}`;
   ctx.fillText('同一份品味，两面的选择。', 72, 1121);
