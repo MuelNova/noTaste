@@ -115,7 +115,7 @@ export async function renderShareCard(report: Report, publicUrl: string | null):
   ctx.fillText('No Taste Today.', 72, 66);
   ctx.fillStyle = muted;
   ctx.font = `400 23px ${sans}`;
-  ctx.fillText('听觉手记 / 双面刊', 72, 118);
+  ctx.fillText('听觉手记', 72, 118);
   ctx.textAlign = 'right';
   ctx.fillText(
     report.demo ? '示例刊' : { day: '日记', week: '周刊', month: '月刊' }[report.type],
@@ -209,7 +209,6 @@ export async function renderShareCard(report: Report, publicUrl: string | null):
   ctx.fillText(bSide ? `${bSide.metrics.plays} 次收录` : 'B 面尚未生成', 72, 1080);
   ctx.fillStyle = '#a8bac9';
   ctx.font = `400 19px ${sans}`;
-  ctx.fillText('同一份品味，两面的选择。', 72, 1121);
   ctx.strokeStyle = '#3c5060';
   ctx.lineWidth = 1;
   ctx.beginPath();

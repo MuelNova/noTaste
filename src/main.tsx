@@ -283,7 +283,7 @@ function App() {
       if (job.status === 'failed') throw new Error(job.error ?? '生成失败');
       setDemo(false);
       setRevision((v) => v + 1);
-      setNotice('已提交，可关闭页面');
+      setNotice('已提交');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -348,7 +348,7 @@ function App() {
     generating || generation?.running
       ? '正在生成'
       : !rightPeriod
-        ? '仅限当天日报'
+        ? '仅当天日报'
         : waiting
           ? nextTime + ' 后可生成'
           : report
@@ -474,13 +474,13 @@ function App() {
               ) : null}
               {status?.local && (
                 <button className="secondary-button" onClick={() => setDemo(true)}>
-                  先读一期示例
+                  读一期示例
                 </button>
               )}
             </div>
             {!status?.owner && (
               <button className="text-button" onClick={() => setSettings(true)}>
-                主人登录
+                管理员登录
               </button>
             )}
           </div>
@@ -536,7 +536,7 @@ function App() {
                 <article className="review">
                   <div className="section-caption">
                     <span>{side === 'b' ? 'Another take.' : 'Taste comment'}</span>
-                    <span>{side === 'b' ? '同一期的另一种声音' : '关于这一期的选择'}</span>
+                    <span>{side === 'b' ? '同一期的另一种声音' : '关于这一期'}</span>
                   </div>
                   <h1>
                     {missingComment
@@ -959,7 +959,7 @@ function App() {
             </div>
             <details className="data-note">
               <summary>生成规则</summary>
-              <p>访客仅可生成当天日报，共享 3 小时冷却。管理员可随时重生成历史日／周／月报告。</p>
+              <p>访客仅可生成当天日报，生成间隔 3 小时。</p>
             </details>
             {status?.owner && (
               <>
@@ -1010,7 +1010,7 @@ function App() {
                 </div>
                 <div className="setting-row">
                   <span>报告可见范围</span>
-                  <strong>{status.public_reports ? '公开阅读' : '仅主人'}</strong>
+                  <strong>{status.public_reports ? '公开阅读' : '仅管理员'}</strong>
                 </div>
                 {collection && (
                   <div className="setting-row">
@@ -1043,14 +1043,14 @@ function App() {
                     setSettings(false);
                   }}
                 >
-                  退出主人模式
+                  退出登录
                 </button>
               </>
             ) : (
               <>
                 {status?.access_configured && (
                   <a className="primary-button" href="/api/admin/login">
-                    用邮箱验证主人身份 <ArrowUpRight size={16} />
+                    验证身份 <ArrowUpRight size={16} />
                   </a>
                 )}
                 {!status?.access_configured && (
