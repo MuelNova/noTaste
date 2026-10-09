@@ -11,7 +11,7 @@ import {
   COOLDOWN_MS,
   type ReportTask,
 } from '../worker/jobs';
-import { generate, processReportTask } from '../worker/pipeline';
+import { daily, generate, processReportTask } from '../worker/pipeline';
 import { verifyAccessToken } from '../worker/access';
 import { verifiedSession, encrypt } from '../worker/security';
 import { notifySpotifyFailure, clearSpotifyAlert } from '../worker/notifications';
@@ -251,6 +251,32 @@ test('scheduled jobs ignore manual cooldown and remain idempotent', async () => 
   sqlite.exec("UPDATE jobs SET status='complete'");
   assert.equal(await claimJob(env, 'week:2026-09-21', { now }), false);
   sqlite.close();
+});
+test('daily, weekly and monthly reports each get a separate idempotent queue task', async () => {
+  const { env, sqlite } = database();
+  const tasks: ReportTask[] = [];
+  env.REPORT_QUEUE = {
+    send: async (task: ReportTask) => {
+      tasks.push(task);
+    },
+  } as unknown as Queue<ReportTask>;
+  try {
+    const firstOfMonthMonday = new Date('2026-05-31T17:30:00Z');
+    await daily(env, firstOfMonthMonday);
+    assert.deepEqual(
+      tasks.map((t) => t.id),
+      ['day:2026-05-31', 'week:2026-05-25', 'month:2026-05-01'],
+    );
+    assert.equal(new Set(tasks.map((t) => t.runId)).size, 3);
+    assert.equal(
+      sqlite.prepare("SELECT count(*) AS n FROM jobs WHERE status='queued'").get()?.n,
+      3,
+    );
+    await daily(env, firstOfMonthMonday);
+    assert.equal(tasks.length, 3);
+  } finally {
+    sqlite.close();
+  }
 });
 test('ordinary mode restricts dates by site timezone and never accepts future periods', () => {
   const boundary = new Date('2026-09-23T16:00:00Z');

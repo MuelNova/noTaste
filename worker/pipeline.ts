@@ -9,10 +9,10 @@ import {
 import type { Classification, PeriodType, Play, Report, Track } from '../shared/schema';
 import type { Env } from './env';
 import { recent, findTrack } from './spotify';
-import { classify, writeEditorial } from './llm';
+import { classify, writeEditorial, MODEL_BUDGET_MS } from './llm';
 import { songSource } from './sources';
 import { partitionPlays, emptyBSide } from '../shared/sides';
-import { claimJob, startQueuedJob, type ReportTask } from './jobs';
+import { enqueueReport, startQueuedJob, type ReportTask } from './jobs';
 export async function getPlays(env: Env, start: string, end: string) {
   const rows = await env.DB.prepare(
     'SELECT p.played_at, p.context, t.data FROM plays p JOIN tracks t ON t.id=p.track_id WHERE p.local_date>=? AND p.local_date<? ORDER BY p.played_at',
@@ -71,13 +71,15 @@ export async function generate(env: Env, type: PeriodType, date: string) {
     const trackCounts = new Map<string, number>();
     for (const play of plays)
       trackCounts.set(play.track.id, (trackCounts.get(play.track.id) ?? 0) + 1);
+    // Classification and editorial retries share a budget below the queue wall-time limit.
+    const modelDeadline = Date.now() + MODEL_BUDGET_MS;
     let labels = await allLabels(env);
     await stage(env, id, '整理音乐标签');
     const known = new Set(labels.map((l) => l.track_id)),
       unclassified = allTracks.filter((t) => !known.has(t.id)).slice(0, 60);
     if (unclassified.length && env.KIMI_API_KEY) {
       try {
-        const fresh = await classify(env, unclassified);
+        const fresh = await classify(env, unclassified, modelDeadline);
         if (fresh.length)
           await env.DB.prepare(
             "INSERT INTO tracks(id,data,classification,taxonomy_version) SELECT t.id,t.data,j.value,'1' FROM json_each(?) j JOIN tracks t ON t.id=json_extract(j.value,'$.track_id') WHERE true ON CONFLICT(id) DO UPDATE SET classification=excluded.classification,taxonomy_version=excluded.taxonomy_version",
@@ -147,17 +149,21 @@ export async function generate(env: Env, type: PeriodType, date: string) {
         const feedback = await env.DB.prepare(
           'SELECT f.value,t.data FROM feedback f JOIN tracks t ON t.id=f.track_id ORDER BY f.updated_at DESC LIMIT 30',
         ).all();
-        const e = await writeEditorial(env, {
-          type,
-          tracks,
-          track_counts: [...trackCounts].map(([track_id, count]) => ({ track_id, count })),
-          metrics,
-          previous,
-          classifications: labels.filter((l) => allTracks.some((t) => t.id === l.track_id)),
-          sources,
-          previous_comment: last ? (JSON.parse(last.data) as Report).taste_comment : null,
-          feedback: feedback.results,
-        });
+        const e = await writeEditorial(
+          env,
+          {
+            type,
+            tracks,
+            track_counts: [...trackCounts].map(([track_id, count]) => ({ track_id, count })),
+            metrics,
+            previous,
+            classifications: labels.filter((l) => allTracks.some((t) => t.id === l.track_id)),
+            sources,
+            previous_comment: last ? (JSON.parse(last.data) as Report).taste_comment : null,
+            feedback: feedback.results,
+          },
+          modelDeadline,
+        );
         const ids = new Set(allTracks.map((t) => t.id));
         const groups = partitionPlays(plays, e.partition);
         const aIds = new Set(e.partition.a_track_ids);
@@ -252,8 +258,7 @@ export async function daily(env: Env, now = new Date()) {
     if (type === 'week' && new Date(today + 'T12:00:00Z').getUTCDay() !== 1) continue;
     if (type === 'month' && !today.endsWith('-01')) continue;
     const { start } = periodBounds(type, yesterday);
-    const task = { id: type + ':' + start, runId: crypto.randomUUID() };
-    if (await claimJob(env, task.id, { runId: task.runId })) await processReportTask(env, task);
+    await enqueueReport(env, type + ':' + start);
   }
 }
 
